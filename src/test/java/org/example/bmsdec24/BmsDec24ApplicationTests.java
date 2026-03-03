@@ -27,7 +27,7 @@ class BmsDec24ApplicationTests {
 //        assert ans == 3;
 
         //Option #3
-        assertEquals(3, ans, "Ans should always be 2");
+        assertEquals(2, ans, "Ans should always be 2");
         assertNotNull(new Object(), "sdfsdfsdf");
         assertNull(null, "sdfsdfsdf");
 
