@@ -3,8 +3,11 @@ package org.example.bmsdec24.models;
 import jakarta.persistence.Entity;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.OneToMany;
+import jakarta.persistence.Temporal;
+import jakarta.persistence.TemporalType;
 import lombok.Data;
 
+import java.util.Date;
 import java.util.List;
 
 @Data
@@ -19,6 +22,8 @@ public class Ticket extends BaseModel{
     @ManyToOne
     private User user;
     private TicketStatus status;
+    @Temporal(TemporalType.TIMESTAMP)
+    private Date holdExpiresAt;
 
     public Movie getMovie() {
         return movie;
@@ -58,5 +63,13 @@ public class Ticket extends BaseModel{
 
     public void setStatus(TicketStatus status) {
         this.status = status;
+    }
+
+    public Date getHoldExpiresAt() {
+        return holdExpiresAt;
+    }
+
+    public void setHoldExpiresAt(Date holdExpiresAt) {
+        this.holdExpiresAt = holdExpiresAt;
     }
 }
