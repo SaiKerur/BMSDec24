@@ -5,12 +5,6 @@ import org.springframework.stereotype.Component;
 
 import java.util.UUID;
 
-/**
- * Stripe strategy. This is a self-contained simulation of Stripe's PaymentIntent
- * flow; the {@code TODO} markers show exactly where the real Stripe SDK calls
- * would slot in. Behaviour is deterministic so it can be exercised end-to-end
- * without external network access or API keys.
- */
 @Component
 public class StripePaymentGateway implements PaymentGateway {
 
@@ -23,7 +17,6 @@ public class StripePaymentGateway implements PaymentGateway {
 
     @Override
     public GatewayOrder createOrder(GatewayChargeRequest request) {
-        // TODO: replace with com.stripe.model.PaymentIntent.create(...) using the secret key.
         String intentId = "pi_" + UUID.randomUUID().toString().replace("-", "");
         String clientSecret = intentId + "_secret_" + UUID.randomUUID().toString().substring(0, 8);
         String checkoutUrl = "https://checkout.stripe.com/pay/" + intentId;
@@ -32,7 +25,6 @@ public class StripePaymentGateway implements PaymentGateway {
 
     @Override
     public GatewayVerificationResult verify(GatewayVerificationRequest request) {
-        // TODO: replace with com.stripe.net.Webhook.constructEvent(payload, sigHeader, endpointSecret).
         if (!isSignatureValid(request)) {
             return GatewayVerificationResult.failure(request.getPaymentReference(), "Invalid Stripe webhook signature");
         }
@@ -43,8 +35,6 @@ public class StripePaymentGateway implements PaymentGateway {
     }
 
     private boolean isSignatureValid(GatewayVerificationRequest request) {
-        // Dev simulation: a blank signature is accepted; any provided signature must
-        // carry Stripe's webhook secret prefix. Real impl validates an HMAC.
         String signature = request.getSignature();
         return signature == null || signature.isBlank() || signature.startsWith(SIGNATURE_PREFIX);
     }

@@ -1,9 +1,5 @@
 package org.example.bmsdec24.payments;
 
-/**
- * Outcome of a gateway verifying a callback. {@code success} is only {@code true}
- * when the signature is valid AND the provider reported a successful capture.
- */
 public class GatewayVerificationResult {
 
     private final boolean success;

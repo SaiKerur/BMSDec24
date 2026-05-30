@@ -1,9 +1,5 @@
 package org.example.bmsdec24.dtos;
 
-/**
- * Simulates the payload a provider posts back (or the client forwards) after the
- * user completes/aborts payment on the hosted checkout page.
- */
 public class PaymentCallbackRequestDto {
     private int paymentId;
     private String paymentReference;

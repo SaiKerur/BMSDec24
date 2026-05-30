@@ -3,15 +3,15 @@ package org.example.bmsdec24.dtos;
 import org.example.bmsdec24.models.PaymentProvider;
 
 public class InitiatePaymentRequestDto {
-    private int ticketId;
+    private int bookingId;
     private PaymentProvider provider;
 
-    public int getTicketId() {
-        return ticketId;
+    public int getBookingId() {
+        return bookingId;
     }
 
-    public void setTicketId(int ticketId) {
-        this.ticketId = ticketId;
+    public void setBookingId(int bookingId) {
+        this.bookingId = bookingId;
     }
 
     public PaymentProvider getProvider() {

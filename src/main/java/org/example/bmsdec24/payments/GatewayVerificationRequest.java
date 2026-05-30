@@ -1,9 +1,5 @@
 package org.example.bmsdec24.payments;
 
-/**
- * Data received from the provider's callback/webhook that the gateway strategy
- * verifies before we trust the reported outcome.
- */
 public class GatewayVerificationRequest {
 
     private final String orderId;

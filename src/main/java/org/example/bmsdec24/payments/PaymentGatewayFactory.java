@@ -7,12 +7,6 @@ import java.util.EnumMap;
 import java.util.List;
 import java.util.Map;
 
-/**
- * Resolves the correct {@link PaymentGateway} strategy for a given provider.
- *
- * <p>All {@link PaymentGateway} beans are injected by Spring and indexed by their
- * provider, so adding a new provider requires no change here.</p>
- */
 @Component
 public class PaymentGatewayFactory {
 

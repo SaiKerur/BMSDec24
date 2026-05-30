@@ -1,13 +1,13 @@
 package org.example.bmsdec24.dtos;
 
+import org.example.bmsdec24.models.BookingStatus;
 import org.example.bmsdec24.models.Payment;
 import org.example.bmsdec24.models.PaymentProvider;
 import org.example.bmsdec24.models.PaymentStatus;
-import org.example.bmsdec24.models.TicketStatus;
 
 public class PaymentResponseDto {
     private int paymentId;
-    private int ticketId;
+    private int bookingId;
     private PaymentProvider provider;
     private PaymentStatus status;
     private double amount;
@@ -17,14 +17,14 @@ public class PaymentResponseDto {
     private String clientSecret;
     private String paymentReference;
     private String failureReason;
-    private TicketStatus ticketStatus;
+    private BookingStatus bookingStatus;
 
     public static PaymentResponseDto from(Payment payment) {
         PaymentResponseDto dto = new PaymentResponseDto();
         dto.setPaymentId(payment.getId());
-        if (payment.getTicket() != null) {
-            dto.setTicketId(payment.getTicket().getId());
-            dto.setTicketStatus(payment.getTicket().getStatus());
+        if (payment.getBooking() != null) {
+            dto.setBookingId(payment.getBooking().getId());
+            dto.setBookingStatus(payment.getBooking().getStatus());
         }
         dto.setProvider(payment.getProvider());
         dto.setStatus(payment.getStatus());
@@ -44,12 +44,12 @@ public class PaymentResponseDto {
         this.paymentId = paymentId;
     }
 
-    public int getTicketId() {
-        return ticketId;
+    public int getBookingId() {
+        return bookingId;
     }
 
-    public void setTicketId(int ticketId) {
-        this.ticketId = ticketId;
+    public void setBookingId(int bookingId) {
+        this.bookingId = bookingId;
     }
 
     public PaymentProvider getProvider() {
@@ -124,11 +124,11 @@ public class PaymentResponseDto {
         this.failureReason = failureReason;
     }
 
-    public TicketStatus getTicketStatus() {
-        return ticketStatus;
+    public BookingStatus getBookingStatus() {
+        return bookingStatus;
     }
 
-    public void setTicketStatus(TicketStatus ticketStatus) {
-        this.ticketStatus = ticketStatus;
+    public void setBookingStatus(BookingStatus bookingStatus) {
+        this.bookingStatus = bookingStatus;
     }
 }

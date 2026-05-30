@@ -1,6 +1,6 @@
 package org.example.bmsdec24.models;
 
-public enum TicketStatus {
+public enum BookingStatus {
     PENDING,
     CONFIRMED,
     CANCELLED

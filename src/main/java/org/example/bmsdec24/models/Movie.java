@@ -1,20 +1,23 @@
 package org.example.bmsdec24.models;
 
 import jakarta.persistence.Entity;
-import lombok.Data;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 
-@Data
 @Entity(name = "movies")
-public class Movie extends BaseModel{
-    private String name;
+public class Movie extends BaseModel {
+
+    private String title;
+
+    @Enumerated(EnumType.STRING)
     private Genre genre;
 
-    public String getName() {
-        return name;
+    public String getTitle() {
+        return title;
     }
 
-    public void setName(String name) {
-        this.name = name;
+    public void setTitle(String title) {
+        this.title = title;
     }
 
     public Genre getGenre() {

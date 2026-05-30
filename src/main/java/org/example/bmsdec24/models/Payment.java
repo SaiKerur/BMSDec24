@@ -3,24 +3,24 @@ package org.example.bmsdec24.models;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
+import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
-import lombok.Data;
 
-@Data
 @Entity(name = "payments")
 public class Payment extends BaseModel {
 
     @ManyToOne
-    private Ticket ticket;
+    @JoinColumn(name = "booking_id")
+    private Booking booking;
 
     private double amount;
 
     private String currency;
 
-    @Enumerated(value = EnumType.ORDINAL)
+    @Enumerated(EnumType.STRING)
     private PaymentProvider provider;
 
-    @Enumerated(value = EnumType.ORDINAL)
+    @Enumerated(EnumType.STRING)
     private PaymentStatus status;
 
     private String gatewayOrderId;
@@ -29,12 +29,12 @@ public class Payment extends BaseModel {
 
     private String failureReason;
 
-    public Ticket getTicket() {
-        return ticket;
+    public Booking getBooking() {
+        return booking;
     }
 
-    public void setTicket(Ticket ticket) {
-        this.ticket = ticket;
+    public void setBooking(Booking booking) {
+        this.booking = booking;
     }
 
     public double getAmount() {

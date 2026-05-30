@@ -1,10 +1,5 @@
 package org.example.bmsdec24.payments;
 
-/**
- * Result of asking a {@link PaymentGateway} to create an order/intent. The
- * {@code checkoutUrl}/{@code clientSecret} are what a real client (web/app)
- * would use to render the provider's hosted payment page.
- */
 public class GatewayOrder {
 
     private final String orderId;

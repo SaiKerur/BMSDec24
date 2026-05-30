@@ -4,7 +4,6 @@ import org.example.bmsdec24.dtos.InitiatePaymentRequestDto;
 import org.example.bmsdec24.dtos.PaymentCallbackRequestDto;
 import org.example.bmsdec24.dtos.PaymentResponseDto;
 import org.example.bmsdec24.exceptions.InvalidPaymentException;
-import org.example.bmsdec24.exceptions.InvalidTicketException;
 import org.example.bmsdec24.exceptions.PaymentAlreadyProcessedException;
 import org.example.bmsdec24.services.PaymentService;
 import org.springframework.http.HttpStatus;
@@ -29,13 +28,12 @@ public class PaymentRestController {
     @PostMapping("/initiate")
     public ResponseEntity<PaymentResponseDto> initiatePayment(@RequestBody InitiatePaymentRequestDto requestDto) {
         try {
-            if (requestDto == null || requestDto.getTicketId() <= 0 || requestDto.getProvider() == null) {
+            if (requestDto == null || requestDto.getBookingId() <= 0 || requestDto.getProvider() == null) {
                 return ResponseEntity.badRequest().build();
             }
-            PaymentResponseDto response = paymentService.initiatePayment(requestDto.getTicketId(), requestDto.getProvider());
+            PaymentResponseDto response = paymentService.initiatePayment(
+                    requestDto.getBookingId(), requestDto.getProvider());
             return ResponseEntity.status(HttpStatus.CREATED).body(response);
-        } catch (InvalidTicketException e) {
-            return ResponseEntity.status(HttpStatus.NOT_FOUND).build();
         } catch (InvalidPaymentException e) {
             return ResponseEntity.status(HttpStatus.CONFLICT).build();
         } catch (Exception e) {

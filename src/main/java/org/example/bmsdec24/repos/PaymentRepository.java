@@ -10,6 +10,6 @@ import java.util.Optional;
 @Repository
 public interface PaymentRepository extends JpaRepository<Payment, Integer> {
 
-    @EntityGraph(attributePaths = {"ticket", "ticket.showSeats", "ticket.showSeats.seat", "ticket.user", "ticket.show"})
+    @EntityGraph(attributePaths = {"booking", "booking.seats", "booking.user", "booking.theatre", "booking.movie"})
     Optional<Payment> findDetailedById(int paymentId);
 }

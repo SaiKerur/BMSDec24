@@ -1,24 +1,21 @@
 package org.example.bmsdec24.payments;
 
-/**
- * Immutable context passed to a {@link PaymentGateway} when creating a charge/order.
- */
 public class GatewayChargeRequest {
 
-    private final int ticketId;
+    private final int bookingId;
     private final double amount;
     private final String currency;
     private final String customerEmail;
 
-    public GatewayChargeRequest(int ticketId, double amount, String currency, String customerEmail) {
-        this.ticketId = ticketId;
+    public GatewayChargeRequest(int bookingId, double amount, String currency, String customerEmail) {
+        this.bookingId = bookingId;
         this.amount = amount;
         this.currency = currency;
         this.customerEmail = customerEmail;
     }
 
-    public int getTicketId() {
-        return ticketId;
+    public int getBookingId() {
+        return bookingId;
     }
 
     public double getAmount() {
