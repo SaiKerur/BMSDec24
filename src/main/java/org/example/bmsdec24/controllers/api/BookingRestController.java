@@ -1,11 +1,11 @@
 package org.example.bmsdec24.controllers.api;
 
 import org.example.bmsdec24.dtos.BookSeatsRequestDto;
+import org.example.bmsdec24.dtos.BookingResponseDto;
 import org.example.bmsdec24.exceptions.BookingAlreadyProcessedException;
 import org.example.bmsdec24.exceptions.InvalidBookingException;
 import org.example.bmsdec24.exceptions.InvalidUserException;
 import org.example.bmsdec24.exceptions.SeatsNotAvailableException;
-import org.example.bmsdec24.models.Booking;
 import org.example.bmsdec24.services.BookingService;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -26,7 +26,7 @@ public class BookingRestController {
     }
 
     @PostMapping("/book")
-    public ResponseEntity<Booking> bookSeats(@RequestBody BookSeatsRequestDto requestDto) {
+    public ResponseEntity<BookingResponseDto> bookSeats(@RequestBody BookSeatsRequestDto requestDto) {
         try {
             if (requestDto == null
                     || requestDto.getUserId() <= 0
@@ -35,11 +35,10 @@ public class BookingRestController {
                     || requestDto.getSeatIds().isEmpty()) {
                 return ResponseEntity.badRequest().build();
             }
-            Booking booking = bookingService.bookSeats(
+            return ResponseEntity.ok(BookingResponseDto.from(bookingService.bookSeats(
                     requestDto.getUserId(),
                     requestDto.getMovieId(),
-                    requestDto.getSeatIds());
-            return ResponseEntity.ok(booking);
+                    requestDto.getSeatIds())));
         } catch (InvalidUserException e) {
             return ResponseEntity.status(HttpStatus.NOT_FOUND).build();
         } catch (SeatsNotAvailableException e) {
@@ -50,9 +49,9 @@ public class BookingRestController {
     }
 
     @PostMapping("/{bookingId}/confirm")
-    public ResponseEntity<Booking> confirmBooking(@PathVariable int bookingId) {
+    public ResponseEntity<BookingResponseDto> confirmBooking(@PathVariable int bookingId) {
         try {
-            return ResponseEntity.ok(bookingService.confirmBooking(bookingId));
+            return ResponseEntity.ok(BookingResponseDto.from(bookingService.confirmBooking(bookingId)));
         } catch (InvalidBookingException e) {
             return ResponseEntity.status(HttpStatus.NOT_FOUND).build();
         } catch (BookingAlreadyProcessedException | SeatsNotAvailableException e) {
@@ -63,9 +62,9 @@ public class BookingRestController {
     }
 
     @PostMapping("/{bookingId}/cancel")
-    public ResponseEntity<Booking> cancelBooking(@PathVariable int bookingId) {
+    public ResponseEntity<BookingResponseDto> cancelBooking(@PathVariable int bookingId) {
         try {
-            return ResponseEntity.ok(bookingService.cancelBooking(bookingId));
+            return ResponseEntity.ok(BookingResponseDto.from(bookingService.cancelBooking(bookingId)));
         } catch (InvalidBookingException e) {
             return ResponseEntity.status(HttpStatus.NOT_FOUND).build();
         } catch (Exception e) {

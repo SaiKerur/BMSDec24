@@ -78,7 +78,8 @@ public class BookingServiceImpl implements BookingService {
         booking.setTotalAmount(totalAmount);
         booking.setHoldExpiresAt(Date.from(new Date().toInstant().plus(BOOKING_HOLD_DURATION)));
 
-        return bookingRepository.save(booking);
+        Booking saved = bookingRepository.save(booking);
+        return bookingRepository.findDetailedById(saved.getId()).orElse(saved);
     }
 
     @Transactional(isolation = Isolation.READ_COMMITTED)
@@ -114,7 +115,8 @@ public class BookingServiceImpl implements BookingService {
 
         booking.setStatus(BookingStatus.CONFIRMED);
         booking.setHoldExpiresAt(null);
-        return bookingRepository.save(booking);
+        Booking saved = bookingRepository.save(booking);
+        return bookingRepository.findDetailedById(saved.getId()).orElse(saved);
     }
 
     @Transactional(isolation = Isolation.READ_COMMITTED)
@@ -127,7 +129,8 @@ public class BookingServiceImpl implements BookingService {
         releaseSeats(booking.getSeats());
         booking.setStatus(BookingStatus.CANCELLED);
         booking.setHoldExpiresAt(null);
-        return bookingRepository.save(booking);
+        Booking saved = bookingRepository.save(booking);
+        return bookingRepository.findDetailedById(saved.getId()).orElse(saved);
     }
 
     @Transactional(isolation = Isolation.READ_COMMITTED)

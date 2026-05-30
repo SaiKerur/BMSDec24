@@ -10,23 +10,9 @@ SET SQL_SAFE_UPDATES = 0;
 
 SET FOREIGN_KEY_CHECKS = 0;
 
-DROP TABLE IF EXISTS booking_seats;
-DROP TABLE IF EXISTS payments;
-DROP TABLE IF EXISTS bookings;
-DROP TABLE IF EXISTS tickets_show_seats;
-DROP TABLE IF EXISTS tickets;
-DROP TABLE IF EXISTS show_seats;
-DROP TABLE IF EXISTS seat_type_shows;
-DROP TABLE IF EXISTS shows;
-DROP TABLE IF EXISTS screen_features;
-DROP TABLE IF EXISTS screen_seats;
-DROP TABLE IF EXISTS theatre_screens;
-DROP TABLE IF EXISTS city_theatres;
-DROP TABLE IF EXISTS screen;
-DROP TABLE IF EXISTS seat;
-DROP TABLE IF EXISTS theatre;
-DROP TABLE IF EXISTS city;
-
+TRUNCATE TABLE payments;
+TRUNCATE TABLE booking_seats;
+TRUNCATE TABLE bookings;
 TRUNCATE TABLE theatre_movies;
 TRUNCATE TABLE seats;
 TRUNCATE TABLE theatres;
@@ -59,6 +45,12 @@ INSERT INTO theatre_movies (theatre_id, movie_id) VALUES
   (2, 1),
   (2, 3);
 
+-- Users must exist before seats (booked_by_user_id FK) and bookings
+-- Password = BCrypt hash of 'Password@123'
+INSERT INTO `user` (id, name, email, password, created_at, updated_at) VALUES
+  (1, 'John Seed', 'john.seed@example.com', '$2a$10$4TUqA6m7WkQn3UE6q8xyeecxKMCC7W8e7jQCSNfO8L3v2h4WvW2iC', NOW(), NOW()),
+  (2, 'Amy Seed',  'amy.seed@example.com',  '$2a$10$4TUqA6m7WkQn3UE6q8xyeecxKMCC7W8e7jQCSNfO8L3v2h4WvW2iC', NOW(), NOW());
+
 -- Seats (seat_status: AVAILABLE | BLOCKED | BOOKED)
 INSERT INTO seats (id, seat_number, seat_type, price, seat_status, theatre_id, booked_by_user_id, created_at, updated_at) VALUES
   (1, 'A1', 'GOLD',     250.0, 'AVAILABLE', 1, NULL, NOW(), NOW()),
@@ -70,11 +62,6 @@ INSERT INTO seats (id, seat_number, seat_type, price, seat_status, theatre_id, b
   (7, 'A2', 'GOLD',     300.0, 'AVAILABLE', 2, NULL, NOW(), NOW()),
   (8, 'B1', 'SILVER',   220.0, 'AVAILABLE', 2, NULL, NOW(), NOW()),
   (9, 'C1', 'PLATINUM', 380.0, 'AVAILABLE', 2, NULL, NOW(), NOW());
-
--- Users (password = BCrypt of 'Password@123')
-INSERT INTO `user` (id, name, email, password, created_at, updated_at) VALUES
-  (1, 'John Seed', 'john.seed@example.com', '$2a$10$4TUqA6m7WkQn3UE6q8xyeecxKMCC7W8e7jQCSNfO8L3v2h4WvW2iC', NOW(), NOW()),
-  (2, 'Amy Seed',  'amy.seed@example.com',  '$2a$10$4TUqA6m7WkQn3UE6q8xyeecxKMCC7W8e7jQCSNfO8L3v2h4WvW2iC', NOW(), NOW());
 
 -- Sample confirmed booking (John, Action Blast at Orion PVR, seats B1+B2)
 INSERT INTO bookings (id, user_id, movie_id, theatre_id, status, total_amount, hold_expires_at, created_at, updated_at) VALUES

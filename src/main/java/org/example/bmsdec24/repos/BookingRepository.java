@@ -13,7 +13,7 @@ import java.util.Optional;
 @Repository
 public interface BookingRepository extends JpaRepository<Booking, Integer> {
 
-    @EntityGraph(attributePaths = {"seats", "seats.theatre", "movie", "theatre", "user"})
+    @EntityGraph(attributePaths = {"seats", "seats.theatre", "movie", "theatre", "theatre.city", "user"})
     Optional<Booking> findDetailedById(int bookingId);
 
     @EntityGraph(attributePaths = {"seats"})
