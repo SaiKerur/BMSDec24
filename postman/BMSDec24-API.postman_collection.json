@@ -2,7 +2,7 @@
   "info": {
     "name": "BMSDec24 API - Full Scenarios",
     "_postman_id": "c5b7f498-52ab-4b85-a5bc-b2f42ce6f5f2",
-    "description": "Comprehensive collection for all REST endpoints with positive, negative, edge, and corner-case scenarios.\n\nRunner order:\n1) Health\n2) Users → Signup success (stores loginEmail + loginPassword)\n3) Users → Signup duplicate\n4) Auth → Login success (stores accessToken + refreshToken + signedUpUserId)\n5) Auth → Login negatives, Refresh, Me\n6) Security Edge Cases (calls to protected endpoints without/with bad tokens)\n7) Tickets → Booking → Confirm/Cancel → Availability/Cleanup\n\nUsage notes:\n- Run db/seed_bmsdec24.sql once in MySQL Workbench to load deterministic data.\n- All requests in Tickets/* and Auth → Me use collection-level Bearer auth via {{accessToken}}.\n- Public endpoints (Health, Signup, Login, Refresh) override auth to noauth.\n- Run Auth → Login success before Tickets requests to populate the bearer token.",
+    "description": "End-to-end scenarios for the simplified BMS API (City → Theatre → Seat, movies in theatres).\n\n**Runner order (recommended):**\n1. Health\n2. Users → Signup success → Signup duplicate\n3. Auth → Login success (stores accessToken) → Auth edge cases\n4. Bookings → negative cases (use seed data) → Book success → Confirm/Cancel edges\n5. Payments → Stripe happy path → Razorpay failure path → Payment edges\n6. Security Edge Cases\n\n**Prerequisites:** Run db/seed_bmsdec24.sql after starting the app once (Hibernate creates tables).\n\n**Seed reference:** Theatre 1 (Orion PVR) movies 1,2 — seats 1-2 AVAILABLE, 3-4 BOOKED, 5 BLOCKED. Theatre 2 movies 1,3 — seats 6-9 AVAILABLE.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "auth": {
@@ -30,18 +30,12 @@
                   "pm.test('Status is 200', function () {",
                   "    pm.response.to.have.status(200);",
                   "});",
-                  "",
-                  "pm.test('Body is OK', function () {",
-                  "    pm.expect(pm.response.text()).to.eql('OK');",
-                  "});"
+                  "pm.test('Body is OK', function () { pm.expect(pm.response.text()).to.eql('OK'); });"
                 ]
               }
             }
           ],
           "request": {
-            "auth": {
-              "type": "noauth"
-            },
             "method": "GET",
             "header": [],
             "url": {
@@ -54,7 +48,10 @@
                 "health"
               ]
             },
-            "description": "Basic service liveness endpoint (public)."
+            "description": "",
+            "auth": {
+              "type": "noauth"
+            }
           },
           "response": []
         }
@@ -71,8 +68,8 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "const randomSuffix = Date.now() + '_' + Math.floor(Math.random() * 10000);",
-                  "const email = `bms_${randomSuffix}@example.com`;",
+                  "const s = Date.now() + '_' + Math.floor(Math.random() * 10000);",
+                  "const email = 'bms_' + s + '@example.com';",
                   "pm.collectionVariables.set('existingEmail', email);",
                   "pm.collectionVariables.set('loginEmail', email);",
                   "pm.collectionVariables.set('loginPassword', pm.collectionVariables.get('password'));",
@@ -85,30 +82,16 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('Status is 201 Created', function () {",
-                  "    pm.response.to.have.status(201);",
-                  "});",
-                  "",
+                  "pm.test('Status is 201 Created', function () { pm.response.to.have.status(201); });",
                   "const json = pm.response.json();",
-                  "",
-                  "pm.test('Response status is SUCCESS', function () {",
-                  "    pm.expect(json.responseStatus).to.eql('SUCCESS');",
-                  "});",
-                  "",
-                  "pm.test('User id is present', function () {",
-                  "    pm.expect(json.userId).to.be.a('number');",
-                  "    pm.expect(json.userId).to.be.above(0);",
-                  "});",
-                  "",
+                  "pm.test('Response status is SUCCESS', function () { pm.expect(json.responseStatus).to.eql('SUCCESS'); });",
+                  "pm.test('User id is present', function () { pm.expect(json.userId).to.be.above(0); });",
                   "pm.collectionVariables.set('signedUpUserId', json.userId);"
                 ]
               }
             }
           ],
           "request": {
-            "auth": {
-              "type": "noauth"
-            },
             "method": "POST",
             "header": [
               {
@@ -116,10 +99,6 @@
                 "value": "application/json"
               }
             ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"name\": \"Postman User\",\n  \"email\": \"{{signupEmail}}\",\n  \"password\": \"{{password}}\"\n}"
-            },
             "url": {
               "raw": "{{baseUrl}}/api/users/signup",
               "host": [
@@ -131,7 +110,14 @@
                 "signup"
               ]
             },
-            "description": "Public endpoint. Creates a new user and also stores loginEmail/loginPassword for the Auth → Login flow."
+            "description": "",
+            "auth": {
+              "type": "noauth"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Postman User\",\n  \"email\": \"{{signupEmail}}\",\n  \"password\": \"{{password}}\"\n}"
+            }
           },
           "response": []
         },
@@ -143,22 +129,13 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('Status is 409 Conflict', function () {",
-                  "    pm.response.to.have.status(409);",
-                  "});",
-                  "",
-                  "const json = pm.response.json();",
-                  "pm.test('Response status is FAILURE', function () {",
-                  "    pm.expect(json.responseStatus).to.eql('FAILURE');",
-                  "});"
+                  "pm.test('Status is 409 Conflict', function () { pm.response.to.have.status(409); });",
+                  "pm.test('Response status is FAILURE', function () { pm.expect(pm.response.json().responseStatus).to.eql('FAILURE'); });"
                 ]
               }
             }
           ],
           "request": {
-            "auth": {
-              "type": "noauth"
-            },
             "method": "POST",
             "header": [
               {
@@ -166,10 +143,6 @@
                 "value": "application/json"
               }
             ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"name\": \"Duplicate User\",\n  \"email\": \"{{existingEmail}}\",\n  \"password\": \"{{password}}\"\n}"
-            },
             "url": {
               "raw": "{{baseUrl}}/api/users/signup",
               "host": [
@@ -181,7 +154,14 @@
                 "signup"
               ]
             },
-            "description": "Public endpoint. Run after successful signup so existingEmail is already registered."
+            "description": "",
+            "auth": {
+              "type": "noauth"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Duplicate User\",\n  \"email\": \"{{existingEmail}}\",\n  \"password\": \"{{password}}\"\n}"
+            }
           },
           "response": []
         }
@@ -189,51 +169,27 @@
     },
     {
       "name": "Auth",
-      "description": "JWT-based login/refresh/me flows. Run Users → Signup success first so loginEmail/loginPassword are populated, then run Login success to populate accessToken/refreshToken.",
+      "description": "JWT login, refresh, and /me. Run Login success before protected folders.",
       "item": [
         {
-          "name": "POST /api/auth/login - success",
+          "name": "POST /api/auth/login - seed user (skip signup)",
           "event": [
             {
               "listen": "test",
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('Status is 200 OK', function () {",
-                  "    pm.response.to.have.status(200);",
-                  "});",
-                  "",
+                  "pm.test('Status is 200 OK', function () { pm.response.to.have.status(200); });",
                   "const json = pm.response.json();",
-                  "",
-                  "pm.test('accessToken is present', function () {",
-                  "    pm.expect(json.accessToken).to.be.a('string').and.not.empty;",
-                  "});",
-                  "",
-                  "pm.test('refreshToken is present', function () {",
-                  "    pm.expect(json.refreshToken).to.be.a('string').and.not.empty;",
-                  "});",
-                  "",
-                  "pm.test('tokenType is Bearer', function () {",
-                  "    pm.expect(String(json.tokenType || '').toLowerCase()).to.eql('bearer');",
-                  "});",
-                  "",
-                  "pm.test('accessTokenExpiresAt is in the future', function () {",
-                  "    pm.expect(Number(json.accessTokenExpiresAt)).to.be.above(Date.now());",
-                  "});",
-                  "",
                   "pm.collectionVariables.set('accessToken', json.accessToken);",
                   "pm.collectionVariables.set('refreshToken', json.refreshToken);",
-                  "if (json.userId) {",
-                  "    pm.collectionVariables.set('signedUpUserId', json.userId);",
-                  "}"
+                  "pm.collectionVariables.set('signedUpUserId', '1');",
+                  "pm.collectionVariables.set('loginEmail', 'john.seed@example.com');"
                 ]
               }
             }
           ],
           "request": {
-            "auth": {
-              "type": "noauth"
-            },
             "method": "POST",
             "header": [
               {
@@ -241,10 +197,6 @@
                 "value": "application/json"
               }
             ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"email\": \"{{loginEmail}}\",\n  \"password\": \"{{loginPassword}}\"\n}"
-            },
             "url": {
               "raw": "{{baseUrl}}/api/auth/login",
               "host": [
@@ -256,7 +208,63 @@
                 "login"
               ]
             },
-            "description": "Authenticates with the freshly signed-up user. Stores accessToken + refreshToken as collection variables for downstream protected calls."
+            "description": "",
+            "auth": {
+              "type": "noauth"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"john.seed@example.com\",\n  \"password\": \"{{password}}\"\n}"
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "POST /api/auth/login - success (after signup)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200 OK', function () { pm.response.to.have.status(200); });",
+                  "const json = pm.response.json();",
+                  "pm.test('accessToken present', function () { pm.expect(json.accessToken).to.be.a('string').and.not.empty; });",
+                  "pm.test('refreshToken present', function () { pm.expect(json.refreshToken).to.be.a('string').and.not.empty; });",
+                  "pm.collectionVariables.set('accessToken', json.accessToken);",
+                  "pm.collectionVariables.set('refreshToken', json.refreshToken);",
+                  "if (json.userId) { pm.collectionVariables.set('signedUpUserId', json.userId); }"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "login"
+              ]
+            },
+            "description": "",
+            "auth": {
+              "type": "noauth"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{loginEmail}}\",\n  \"password\": \"{{loginPassword}}\"\n}"
+            }
           },
           "response": []
         },
@@ -276,9 +284,6 @@
             }
           ],
           "request": {
-            "auth": {
-              "type": "noauth"
-            },
             "method": "POST",
             "header": [
               {
@@ -286,10 +291,6 @@
                 "value": "application/json"
               }
             ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"email\": \"{{loginEmail}}\",\n  \"password\": \"definitely-wrong-password\"\n}"
-            },
             "url": {
               "raw": "{{baseUrl}}/api/auth/login",
               "host": [
@@ -300,6 +301,14 @@
                 "auth",
                 "login"
               ]
+            },
+            "description": "",
+            "auth": {
+              "type": "noauth"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{loginEmail}}\",\n  \"password\": \"wrong-password\"\n}"
             }
           },
           "response": []
@@ -320,9 +329,6 @@
             }
           ],
           "request": {
-            "auth": {
-              "type": "noauth"
-            },
             "method": "POST",
             "header": [
               {
@@ -330,10 +336,6 @@
                 "value": "application/json"
               }
             ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"email\": \"ghost_user_does_not_exist@example.com\",\n  \"password\": \"{{loginPassword}}\"\n}"
-            },
             "url": {
               "raw": "{{baseUrl}}/api/auth/login",
               "host": [
@@ -344,6 +346,14 @@
                 "auth",
                 "login"
               ]
+            },
+            "description": "",
+            "auth": {
+              "type": "noauth"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"nobody@example.com\",\n  \"password\": \"{{loginPassword}}\"\n}"
             }
           },
           "response": []
@@ -356,7 +366,7 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('Status is client error (400 or 401)', function () {",
+                  "pm.test('Status is client error', function () {",
                   "    pm.expect([400, 401]).to.include(pm.response.code);",
                   "});"
                 ]
@@ -364,9 +374,6 @@
             }
           ],
           "request": {
-            "auth": {
-              "type": "noauth"
-            },
             "method": "POST",
             "header": [
               {
@@ -374,10 +381,6 @@
                 "value": "application/json"
               }
             ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"email\": \"{{loginEmail}}\"\n}"
-            },
             "url": {
               "raw": "{{baseUrl}}/api/auth/login",
               "host": [
@@ -388,6 +391,14 @@
                 "auth",
                 "login"
               ]
+            },
+            "description": "",
+            "auth": {
+              "type": "noauth"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{loginEmail}}\"\n}"
             }
           },
           "response": []
@@ -400,7 +411,7 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('Status is client error (400 or 401)', function () {",
+                  "pm.test('Status is client error', function () {",
                   "    pm.expect([400, 401]).to.include(pm.response.code);",
                   "});"
                 ]
@@ -408,9 +419,6 @@
             }
           ],
           "request": {
-            "auth": {
-              "type": "noauth"
-            },
             "method": "POST",
             "header": [
               {
@@ -418,10 +426,6 @@
                 "value": "application/json"
               }
             ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"password\": \"{{loginPassword}}\"\n}"
-            },
             "url": {
               "raw": "{{baseUrl}}/api/auth/login",
               "host": [
@@ -432,6 +436,14 @@
                 "auth",
                 "login"
               ]
+            },
+            "description": "",
+            "auth": {
+              "type": "noauth"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"password\": \"{{loginPassword}}\"\n}"
             }
           },
           "response": []
@@ -444,7 +456,7 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('Status is client error (400 or 401)', function () {",
+                  "pm.test('Status is client error', function () {",
                   "    pm.expect([400, 401]).to.include(pm.response.code);",
                   "});"
                 ]
@@ -452,9 +464,6 @@
             }
           ],
           "request": {
-            "auth": {
-              "type": "noauth"
-            },
             "method": "POST",
             "header": [
               {
@@ -462,10 +471,6 @@
                 "value": "application/json"
               }
             ],
-            "body": {
-              "mode": "raw",
-              "raw": "{}"
-            },
             "url": {
               "raw": "{{baseUrl}}/api/auth/login",
               "host": [
@@ -476,6 +481,14 @@
                 "auth",
                 "login"
               ]
+            },
+            "description": "",
+            "auth": {
+              "type": "noauth"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{}"
             }
           },
           "response": []
@@ -488,20 +501,8 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('Status is 200 OK', function () {",
-                  "    pm.response.to.have.status(200);",
-                  "});",
-                  "",
+                  "pm.test('Status is 200 OK', function () { pm.response.to.have.status(200); });",
                   "const json = pm.response.json();",
-                  "",
-                  "pm.test('accessToken is present', function () {",
-                  "    pm.expect(json.accessToken).to.be.a('string').and.not.empty;",
-                  "});",
-                  "",
-                  "pm.test('refreshToken is present', function () {",
-                  "    pm.expect(json.refreshToken).to.be.a('string').and.not.empty;",
-                  "});",
-                  "",
                   "pm.collectionVariables.set('accessToken', json.accessToken);",
                   "pm.collectionVariables.set('refreshToken', json.refreshToken);"
                 ]
@@ -509,9 +510,6 @@
             }
           ],
           "request": {
-            "auth": {
-              "type": "noauth"
-            },
             "method": "POST",
             "header": [
               {
@@ -519,10 +517,6 @@
                 "value": "application/json"
               }
             ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"refreshToken\": \"{{refreshToken}}\"\n}"
-            },
             "url": {
               "raw": "{{baseUrl}}/api/auth/refresh",
               "host": [
@@ -534,12 +528,19 @@
                 "refresh"
               ]
             },
-            "description": "Rotates the access (and refresh) token using the current refresh token."
+            "description": "",
+            "auth": {
+              "type": "noauth"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"refreshToken\": \"{{refreshToken}}\"\n}"
+            }
           },
           "response": []
         },
         {
-          "name": "POST /api/auth/refresh - reuse access token as refresh (401)",
+          "name": "POST /api/auth/refresh - access token as refresh (401)",
           "event": [
             {
               "listen": "test",
@@ -554,9 +555,6 @@
             }
           ],
           "request": {
-            "auth": {
-              "type": "noauth"
-            },
             "method": "POST",
             "header": [
               {
@@ -564,10 +562,6 @@
                 "value": "application/json"
               }
             ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"refreshToken\": \"{{accessToken}}\"\n}"
-            },
             "url": {
               "raw": "{{baseUrl}}/api/auth/refresh",
               "host": [
@@ -579,7 +573,14 @@
                 "refresh"
               ]
             },
-            "description": "Sending an access token to /refresh must be rejected because token type is not 'refresh'."
+            "description": "",
+            "auth": {
+              "type": "noauth"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"refreshToken\": \"{{accessToken}}\"\n}"
+            }
           },
           "response": []
         },
@@ -599,9 +600,6 @@
             }
           ],
           "request": {
-            "auth": {
-              "type": "noauth"
-            },
             "method": "POST",
             "header": [
               {
@@ -609,10 +607,6 @@
                 "value": "application/json"
               }
             ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"refreshToken\": \"not.a.valid.jwt\"\n}"
-            },
             "url": {
               "raw": "{{baseUrl}}/api/auth/refresh",
               "host": [
@@ -623,6 +617,14 @@
                 "auth",
                 "refresh"
               ]
+            },
+            "description": "",
+            "auth": {
+              "type": "noauth"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"refreshToken\": \"not.a.jwt\"\n}"
             }
           },
           "response": []
@@ -635,7 +637,7 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('Status is client error (400 or 401)', function () {",
+                  "pm.test('Status is client error', function () {",
                   "    pm.expect([400, 401]).to.include(pm.response.code);",
                   "});"
                 ]
@@ -643,9 +645,6 @@
             }
           ],
           "request": {
-            "auth": {
-              "type": "noauth"
-            },
             "method": "POST",
             "header": [
               {
@@ -653,10 +652,6 @@
                 "value": "application/json"
               }
             ],
-            "body": {
-              "mode": "raw",
-              "raw": "{}"
-            },
             "url": {
               "raw": "{{baseUrl}}/api/auth/refresh",
               "host": [
@@ -667,6 +662,14 @@
                 "auth",
                 "refresh"
               ]
+            },
+            "description": "",
+            "auth": {
+              "type": "noauth"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{}"
             }
           },
           "response": []
@@ -679,22 +682,10 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('Status is 200 OK', function () {",
-                  "    pm.response.to.have.status(200);",
-                  "});",
-                  "",
+                  "pm.test('Status is 200 OK', function () { pm.response.to.have.status(200); });",
                   "const json = pm.response.json();",
-                  "",
-                  "pm.test('Authenticated user id is present', function () {",
-                  "    pm.expect(json.id || json.userId).to.exist;",
-                  "});",
-                  "",
-                  "pm.test('Authenticated user email matches loginEmail', function () {",
-                  "    const expected = pm.collectionVariables.get('loginEmail');",
-                  "    if (expected) {",
-                  "        pm.expect(String(json.email || '').toLowerCase()).to.eql(String(expected).toLowerCase());",
-                  "    }",
-                  "});"
+                  "pm.test('userId present', function () { pm.expect(json.userId).to.exist; });",
+                  "pm.test('email present', function () { pm.expect(json.email).to.be.a('string').and.not.empty; });"
                 ]
               }
             }
@@ -713,7 +704,7 @@
                 "me"
               ]
             },
-            "description": "Uses collection-level Bearer auth via {{accessToken}}."
+            "description": ""
           },
           "response": []
         },
@@ -733,9 +724,6 @@
             }
           ],
           "request": {
-            "auth": {
-              "type": "noauth"
-            },
             "method": "GET",
             "header": [],
             "url": {
@@ -748,6 +736,10 @@
                 "auth",
                 "me"
               ]
+            },
+            "description": "",
+            "auth": {
+              "type": "noauth"
             }
           },
           "response": []
@@ -768,14 +760,11 @@
             }
           ],
           "request": {
-            "auth": {
-              "type": "noauth"
-            },
             "method": "GET",
             "header": [
               {
                 "key": "Authorization",
-                "value": "Bearer this.is.not.a.jwt"
+                "value": "Bearer not.a.jwt"
               }
             ],
             "url": {
@@ -788,6 +777,10 @@
                 "auth",
                 "me"
               ]
+            },
+            "description": "",
+            "auth": {
+              "type": "noauth"
             }
           },
           "response": []
@@ -808,9 +801,6 @@
             }
           ],
           "request": {
-            "auth": {
-              "type": "noauth"
-            },
             "method": "GET",
             "header": [
               {
@@ -829,12 +819,15 @@
                 "me"
               ]
             },
-            "description": "Non-Bearer Authorization header must be rejected."
+            "description": "",
+            "auth": {
+              "type": "noauth"
+            }
           },
           "response": []
         },
         {
-          "name": "GET /api/auth/me - refresh token used as access (401)",
+          "name": "GET /api/auth/me - refresh token as access (401)",
           "event": [
             {
               "listen": "test",
@@ -849,16 +842,6 @@
             }
           ],
           "request": {
-            "auth": {
-              "type": "bearer",
-              "bearer": [
-                {
-                  "key": "token",
-                  "value": "{{refreshToken}}",
-                  "type": "string"
-                }
-              ]
-            },
             "method": "GET",
             "header": [],
             "url": {
@@ -872,1036 +855,7 @@
                 "me"
               ]
             },
-            "description": "Refresh tokens must not be accepted by the JwtAuthenticationFilter (token type != access)."
-          },
-          "response": []
-        }
-      ]
-    },
-    {
-      "name": "Tickets - Booking",
-      "item": [
-        {
-          "name": "POST /api/tickets/book - success",
-          "event": [
-            {
-              "listen": "prerequest",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "const signedUpUserId = pm.collectionVariables.get('signedUpUserId');",
-                  "const fallbackUserId = pm.collectionVariables.get('validUserId');",
-                  "pm.variables.set('bookingUserId', signedUpUserId || fallbackUserId);"
-                ]
-              }
-            },
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test('Status is 200 OK', function () {",
-                  "    pm.response.to.have.status(200);",
-                  "});",
-                  "",
-                  "const json = pm.response.json();",
-                  "",
-                  "pm.test('Ticket id exists', function () {",
-                  "    pm.expect(json.id).to.be.a('number');",
-                  "    pm.expect(json.id).to.be.above(0);",
-                  "});",
-                  "",
-                  "pm.test('Ticket status is PENDING', function () {",
-                  "    pm.expect(json.status).to.eql('PENDING');",
-                  "});",
-                  "",
-                  "pm.collectionVariables.set('ticketId', json.id);"
-                ]
-              }
-            }
-          ],
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"userId\": {{bookingUserId}},\n  \"showSeatIds\": {{validShowSeatIds}}\n}"
-            },
-            "url": {
-              "raw": "{{baseUrl}}/api/tickets/book",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "api",
-                "tickets",
-                "book"
-              ]
-            },
-            "description": "Requires valid showSeat IDs from one show. Updates collection variable ticketId on success."
-          },
-          "response": []
-        },
-        {
-          "name": "POST /api/tickets/book - invalid userId <= 0 (400)",
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test('Status is 400 Bad Request', function () {",
-                  "    pm.response.to.have.status(400);",
-                  "});"
-                ]
-              }
-            }
-          ],
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"userId\": 0,\n  \"showSeatIds\": {{validShowSeatIds}}\n}"
-            },
-            "url": {
-              "raw": "{{baseUrl}}/api/tickets/book",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "api",
-                "tickets",
-                "book"
-              ]
-            }
-          },
-          "response": []
-        },
-        {
-          "name": "POST /api/tickets/book - empty showSeatIds (400)",
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test('Status is 400 Bad Request', function () {",
-                  "    pm.response.to.have.status(400);",
-                  "});"
-                ]
-              }
-            }
-          ],
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"userId\": {{validUserId}},\n  \"showSeatIds\": []\n}"
-            },
-            "url": {
-              "raw": "{{baseUrl}}/api/tickets/book",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "api",
-                "tickets",
-                "book"
-              ]
-            }
-          },
-          "response": []
-        },
-        {
-          "name": "POST /api/tickets/book - null showSeatIds (400)",
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test('Status is 400 Bad Request', function () {",
-                  "    pm.response.to.have.status(400);",
-                  "});"
-                ]
-              }
-            }
-          ],
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"userId\": {{validUserId}},\n  \"showSeatIds\": null\n}"
-            },
-            "url": {
-              "raw": "{{baseUrl}}/api/tickets/book",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "api",
-                "tickets",
-                "book"
-              ]
-            }
-          },
-          "response": []
-        },
-        {
-          "name": "POST /api/tickets/book - non-existent user (404)",
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test('Status is 404 Not Found', function () {",
-                  "    pm.response.to.have.status(404);",
-                  "});"
-                ]
-              }
-            }
-          ],
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"userId\": {{invalidUserId}},\n  \"showSeatIds\": {{validShowSeatIds}}\n}"
-            },
-            "url": {
-              "raw": "{{baseUrl}}/api/tickets/book",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "api",
-                "tickets",
-                "book"
-              ]
-            }
-          },
-          "response": []
-        },
-        {
-          "name": "POST /api/tickets/book - duplicate seat IDs in payload (409)",
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test('Status is 409 Conflict', function () {",
-                  "    pm.response.to.have.status(409);",
-                  "});"
-                ]
-              }
-            }
-          ],
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"userId\": {{validUserId}},\n  \"showSeatIds\": [1, 1]\n}"
-            },
-            "url": {
-              "raw": "{{baseUrl}}/api/tickets/book",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "api",
-                "tickets",
-                "book"
-              ]
-            },
-            "description": "Uses hardcoded duplicate IDs to validate duplicate-seat corner case. Adjust IDs as needed."
-          },
-          "response": []
-        },
-        {
-          "name": "POST /api/tickets/book - already booked seat (409)",
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test('Status is 409 Conflict', function () {",
-                  "    pm.response.to.have.status(409);",
-                  "});"
-                ]
-              }
-            }
-          ],
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"userId\": {{validUserId}},\n  \"showSeatIds\": {{bookedShowSeatIds}}\n}"
-            },
-            "url": {
-              "raw": "{{baseUrl}}/api/tickets/book",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "api",
-                "tickets",
-                "book"
-              ]
-            },
-            "description": "Seeded data has showSeatId=3 already BOOKED."
-          },
-          "response": []
-        },
-        {
-          "name": "POST /api/tickets/book - blocked seat (409)",
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test('Status is 409 Conflict', function () {",
-                  "    pm.response.to.have.status(409);",
-                  "});"
-                ]
-              }
-            }
-          ],
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"userId\": {{validUserId}},\n  \"showSeatIds\": {{blockedShowSeatIds}}\n}"
-            },
-            "url": {
-              "raw": "{{baseUrl}}/api/tickets/book",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "api",
-                "tickets",
-                "book"
-              ]
-            },
-            "description": "Seeded data has showSeatId=5 in BLOCKED state."
-          },
-          "response": []
-        },
-        {
-          "name": "POST /api/tickets/book - mixed shows in one request (409)",
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test('Status is 409 Conflict', function () {",
-                  "    pm.response.to.have.status(409);",
-                  "});"
-                ]
-              }
-            }
-          ],
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"userId\": {{validUserId}},\n  \"showSeatIds\": {{mixedShowSeatIds}}\n}"
-            },
-            "url": {
-              "raw": "{{baseUrl}}/api/tickets/book",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "api",
-                "tickets",
-                "book"
-              ]
-            },
-            "description": "Seeded IDs 1 and 6 belong to different shows."
-          },
-          "response": []
-        }
-      ]
-    },
-    {
-      "name": "Tickets - Confirm / Cancel",
-      "item": [
-        {
-          "name": "POST /api/tickets/{{ticketId}}/confirm - success",
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test('Status is 200 OK', function () {",
-                  "    pm.response.to.have.status(200);",
-                  "});",
-                  "",
-                  "const json = pm.response.json();",
-                  "pm.test('Ticket status becomes CONFIRMED', function () {",
-                  "    pm.expect(json.status).to.eql('CONFIRMED');",
-                  "});"
-                ]
-              }
-            }
-          ],
-          "request": {
-            "method": "POST",
-            "header": [],
-            "url": {
-              "raw": "{{baseUrl}}/api/tickets/{{ticketId}}/confirm",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "api",
-                "tickets",
-                "{{ticketId}}",
-                "confirm"
-              ]
-            },
-            "description": "Run after a successful book request that stored ticketId."
-          },
-          "response": []
-        },
-        {
-          "name": "POST /api/tickets/{{ticketId}}/confirm - already processed (409)",
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test('Status is 409 Conflict', function () {",
-                  "    pm.response.to.have.status(409);",
-                  "});"
-                ]
-              }
-            }
-          ],
-          "request": {
-            "method": "POST",
-            "header": [],
-            "url": {
-              "raw": "{{baseUrl}}/api/tickets/{{ticketId}}/confirm",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "api",
-                "tickets",
-                "{{ticketId}}",
-                "confirm"
-              ]
-            },
-            "description": "Run again immediately after confirm success to validate conflict handling."
-          },
-          "response": []
-        },
-        {
-          "name": "POST /api/tickets/999999/confirm - ticket not found (404)",
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test('Status is 404 Not Found', function () {",
-                  "    pm.response.to.have.status(404);",
-                  "});"
-                ]
-              }
-            }
-          ],
-          "request": {
-            "method": "POST",
-            "header": [],
-            "url": {
-              "raw": "{{baseUrl}}/api/tickets/999999/confirm",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "api",
-                "tickets",
-                "999999",
-                "confirm"
-              ]
-            }
-          },
-          "response": []
-        },
-        {
-          "name": "POST /api/tickets/{{ticketId}}/cancel - success",
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test('Status is 200 OK', function () {",
-                  "    pm.response.to.have.status(200);",
-                  "});",
-                  "",
-                  "const json = pm.response.json();",
-                  "pm.test('Ticket status is CANCELLED', function () {",
-                  "    pm.expect(json.status).to.eql('CANCELLED');",
-                  "});"
-                ]
-              }
-            }
-          ],
-          "request": {
-            "method": "POST",
-            "header": [],
-            "url": {
-              "raw": "{{baseUrl}}/api/tickets/{{ticketId}}/cancel",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "api",
-                "tickets",
-                "{{ticketId}}",
-                "cancel"
-              ]
-            },
-            "description": "Can be run on pending or confirmed tickets."
-          },
-          "response": []
-        },
-        {
-          "name": "POST /api/tickets/999999/cancel - ticket not found (404)",
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test('Status is 404 Not Found', function () {",
-                  "    pm.response.to.have.status(404);",
-                  "});"
-                ]
-              }
-            }
-          ],
-          "request": {
-            "method": "POST",
-            "header": [],
-            "url": {
-              "raw": "{{baseUrl}}/api/tickets/999999/cancel",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "api",
-                "tickets",
-                "999999",
-                "cancel"
-              ]
-            }
-          },
-          "response": []
-        }
-      ]
-    },
-    {
-      "name": "Tickets - Availability / Cleanup",
-      "item": [
-        {
-          "name": "GET /api/tickets/shows/{{validShowId}}/availability - full snapshot",
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test('Status is 200 OK', function () {",
-                  "    pm.response.to.have.status(200);",
-                  "});",
-                  "",
-                  "const json = pm.response.json();",
-                  "",
-                  "pm.test('showId is present', function () {",
-                  "    pm.expect(json.showId).to.be.a('number');",
-                  "});",
-                  "",
-                  "pm.test('Seats array is present', function () {",
-                  "    pm.expect(json.seats).to.be.an('array');",
-                  "});",
-                  "",
-                  "if (json.serverTimeEpochMs) {",
-                  "    pm.collectionVariables.set('lastServerTime', json.serverTimeEpochMs);",
-                  "}"
-                ]
-              }
-            }
-          ],
-          "request": {
-            "method": "GET",
-            "header": [],
-            "url": {
-              "raw": "{{baseUrl}}/api/tickets/shows/{{validShowId}}/availability",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "api",
-                "tickets",
-                "shows",
-                "{{validShowId}}",
-                "availability"
-              ]
-            }
-          },
-          "response": []
-        },
-        {
-          "name": "GET /api/tickets/shows/{{validShowId}}/availability?changedAfterEpochMs=... - delta view",
-          "event": [
-            {
-              "listen": "prerequest",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "const changedAfter = pm.collectionVariables.get('lastServerTime') || pm.collectionVariables.get('changedAfterEpochMs');",
-                  "pm.variables.set('changedAfter', changedAfter);"
-                ]
-              }
-            },
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test('Status is 200 OK', function () {",
-                  "    pm.response.to.have.status(200);",
-                  "});",
-                  "",
-                  "const json = pm.response.json();",
-                  "pm.test('Seats field exists', function () {",
-                  "    pm.expect(json).to.have.property('seats');",
-                  "});"
-                ]
-              }
-            }
-          ],
-          "request": {
-            "method": "GET",
-            "header": [],
-            "url": {
-              "raw": "{{baseUrl}}/api/tickets/shows/{{validShowId}}/availability?changedAfterEpochMs={{changedAfter}}",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "api",
-                "tickets",
-                "shows",
-                "{{validShowId}}",
-                "availability"
-              ],
-              "query": [
-                {
-                  "key": "changedAfterEpochMs",
-                  "value": "{{changedAfter}}"
-                }
-              ]
-            },
-            "description": "If no recent changes occurred after changedAfter, seats array may be empty."
-          },
-          "response": []
-        },
-        {
-          "name": "GET /api/tickets/shows/0/availability - invalid showId (400)",
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test('Status is 400 Bad Request', function () {",
-                  "    pm.response.to.have.status(400);",
-                  "});"
-                ]
-              }
-            }
-          ],
-          "request": {
-            "method": "GET",
-            "header": [],
-            "url": {
-              "raw": "{{baseUrl}}/api/tickets/shows/0/availability",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "api",
-                "tickets",
-                "shows",
-                "0",
-                "availability"
-              ]
-            }
-          },
-          "response": []
-        },
-        {
-          "name": "POST /api/tickets/cleanup-expired - run cleanup",
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test('Status is 200 OK', function () {",
-                  "    pm.response.to.have.status(200);",
-                  "});",
-                  "",
-                  "let body = pm.response.text();",
-                  "pm.test('Body is numeric count', function () {",
-                  "    const value = Number(body);",
-                  "    pm.expect(Number.isNaN(value)).to.eql(false);",
-                  "    pm.expect(value).to.be.at.least(0);",
-                  "});"
-                ]
-              }
-            }
-          ],
-          "request": {
-            "method": "POST",
-            "header": [],
-            "url": {
-              "raw": "{{baseUrl}}/api/tickets/cleanup-expired",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "api",
-                "tickets",
-                "cleanup-expired"
-              ]
-            }
-          },
-          "response": []
-        }
-      ]
-    },
-    {
-      "name": "Security Edge Cases",
-      "description": "Validates that protected endpoints reject unauthenticated/malformed/invalid token requests.",
-      "item": [
-        {
-          "name": "POST /api/tickets/book - missing token (401)",
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test('Status is 401 Unauthorized', function () {",
-                  "    pm.response.to.have.status(401);",
-                  "});"
-                ]
-              }
-            }
-          ],
-          "request": {
-            "auth": {
-              "type": "noauth"
-            },
-            "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"userId\": {{validUserId}},\n  \"showSeatIds\": {{validShowSeatIds}}\n}"
-            },
-            "url": {
-              "raw": "{{baseUrl}}/api/tickets/book",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "api",
-                "tickets",
-                "book"
-              ]
-            }
-          },
-          "response": []
-        },
-        {
-          "name": "POST /api/tickets/book - invalid token (401)",
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test('Status is 401 Unauthorized', function () {",
-                  "    pm.response.to.have.status(401);",
-                  "});"
-                ]
-              }
-            }
-          ],
-          "request": {
-            "auth": {
-              "type": "noauth"
-            },
-            "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              },
-              {
-                "key": "Authorization",
-                "value": "Bearer eyJhbGciOiJIUzI1NiJ9.invalid.payload"
-              }
-            ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"userId\": {{validUserId}},\n  \"showSeatIds\": {{validShowSeatIds}}\n}"
-            },
-            "url": {
-              "raw": "{{baseUrl}}/api/tickets/book",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "api",
-                "tickets",
-                "book"
-              ]
-            }
-          },
-          "response": []
-        },
-        {
-          "name": "POST /api/tickets/{{ticketId}}/confirm - missing token (401)",
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test('Status is 401 Unauthorized', function () {",
-                  "    pm.response.to.have.status(401);",
-                  "});"
-                ]
-              }
-            }
-          ],
-          "request": {
-            "auth": {
-              "type": "noauth"
-            },
-            "method": "POST",
-            "header": [],
-            "url": {
-              "raw": "{{baseUrl}}/api/tickets/{{ticketId}}/confirm",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "api",
-                "tickets",
-                "{{ticketId}}",
-                "confirm"
-              ]
-            }
-          },
-          "response": []
-        },
-        {
-          "name": "POST /api/tickets/{{ticketId}}/cancel - missing token (401)",
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test('Status is 401 Unauthorized', function () {",
-                  "    pm.response.to.have.status(401);",
-                  "});"
-                ]
-              }
-            }
-          ],
-          "request": {
-            "auth": {
-              "type": "noauth"
-            },
-            "method": "POST",
-            "header": [],
-            "url": {
-              "raw": "{{baseUrl}}/api/tickets/{{ticketId}}/cancel",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "api",
-                "tickets",
-                "{{ticketId}}",
-                "cancel"
-              ]
-            }
-          },
-          "response": []
-        },
-        {
-          "name": "GET /api/tickets/shows/{{validShowId}}/availability - missing token (401)",
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test('Status is 401 Unauthorized', function () {",
-                  "    pm.response.to.have.status(401);",
-                  "});"
-                ]
-              }
-            }
-          ],
-          "request": {
-            "auth": {
-              "type": "noauth"
-            },
-            "method": "GET",
-            "header": [],
-            "url": {
-              "raw": "{{baseUrl}}/api/tickets/shows/{{validShowId}}/availability",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "api",
-                "tickets",
-                "shows",
-                "{{validShowId}}",
-                "availability"
-              ]
-            }
-          },
-          "response": []
-        },
-        {
-          "name": "POST /api/tickets/cleanup-expired - missing token (401)",
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test('Status is 401 Unauthorized', function () {",
-                  "    pm.response.to.have.status(401);",
-                  "});"
-                ]
-              }
-            }
-          ],
-          "request": {
-            "auth": {
-              "type": "noauth"
-            },
-            "method": "POST",
-            "header": [],
-            "url": {
-              "raw": "{{baseUrl}}/api/tickets/cleanup-expired",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "api",
-                "tickets",
-                "cleanup-expired"
-              ]
-            }
-          },
-          "response": []
-        },
-        {
-          "name": "POST /api/tickets/book - refresh token used as access (401)",
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test('Status is 401 Unauthorized', function () {",
-                  "    pm.response.to.have.status(401);",
-                  "});"
-                ]
-              }
-            }
-          ],
-          "request": {
+            "description": "",
             "auth": {
               "type": "bearer",
               "bearer": [
@@ -1911,7 +865,32 @@
                   "type": "string"
                 }
               ]
-            },
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Bookings",
+      "description": "Book seats for a movie at a theatre. Run Auth login first. Negative cases use seed data before Book success consumes seats 1,2.",
+      "item": [
+        {
+          "name": "POST /api/bookings/book - invalid userId (404)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 404 Not Found', function () {",
+                  "    pm.response.to.have.status(404);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
             "method": "POST",
             "header": [
               {
@@ -1919,22 +898,1836 @@
                 "value": "application/json"
               }
             ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"userId\": {{validUserId}},\n  \"showSeatIds\": {{validShowSeatIds}}\n}"
-            },
             "url": {
-              "raw": "{{baseUrl}}/api/tickets/book",
+              "raw": "{{baseUrl}}/api/bookings/book",
               "host": [
                 "{{baseUrl}}"
               ],
               "path": [
                 "api",
-                "tickets",
+                "bookings",
                 "book"
               ]
             },
-            "description": "Refresh tokens must not be accepted by JwtAuthenticationFilter for protected APIs."
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"userId\": {{invalidUserId}},\n  \"movieId\": {{validMovieId}},\n  \"seatIds\": {{availableSeatIds}}\n}"
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "POST /api/bookings/book - userId zero (400)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 400 Bad Request', function () {",
+                  "    pm.response.to.have.status(400);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/bookings/book",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "bookings",
+                "book"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"userId\": 0,\n  \"movieId\": {{validMovieId}},\n  \"seatIds\": {{availableSeatIds}}\n}"
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "POST /api/bookings/book - movieId zero (400)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 400 Bad Request', function () {",
+                  "    pm.response.to.have.status(400);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/bookings/book",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "bookings",
+                "book"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"userId\": {{validUserId}},\n  \"movieId\": 0,\n  \"seatIds\": {{availableSeatIds}}\n}"
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "POST /api/bookings/book - empty seatIds (400)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 400 Bad Request', function () {",
+                  "    pm.response.to.have.status(400);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/bookings/book",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "bookings",
+                "book"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"userId\": {{validUserId}},\n  \"movieId\": {{validMovieId}},\n  \"seatIds\": []\n}"
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "POST /api/bookings/book - duplicate seat IDs (409)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 409 Conflict', function () {",
+                  "    pm.response.to.have.status(409);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/bookings/book",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "bookings",
+                "book"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"userId\": {{validUserId}},\n  \"movieId\": {{validMovieId}},\n  \"seatIds\": {{duplicateSeatIds}}\n}"
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "POST /api/bookings/book - seats from different theatres (409)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 409 Conflict', function () {",
+                  "    pm.response.to.have.status(409);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/bookings/book",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "bookings",
+                "book"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"userId\": {{validUserId}},\n  \"movieId\": {{validMovieId}},\n  \"seatIds\": {{mixedTheatreSeatIds}}\n}"
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "POST /api/bookings/book - movie not running in theatre (409)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 409 Conflict', function () {",
+                  "    pm.response.to.have.status(409);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/bookings/book",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "bookings",
+                "book"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"userId\": {{validUserId}},\n  \"movieId\": {{movieNotInTheatre1}},\n  \"seatIds\": {{availableSeatIds}}\n}"
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "POST /api/bookings/book - seat already BOOKED (409)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 409 Conflict', function () {",
+                  "    pm.response.to.have.status(409);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/bookings/book",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "bookings",
+                "book"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"userId\": {{validUserId}},\n  \"movieId\": {{validMovieId}},\n  \"seatIds\": {{bookedSeatIds}}\n}"
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "POST /api/bookings/book - seat BLOCKED (409)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 409 Conflict', function () {",
+                  "    pm.response.to.have.status(409);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/bookings/book",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "bookings",
+                "book"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"userId\": {{validUserId}},\n  \"movieId\": {{validMovieId}},\n  \"seatIds\": {{blockedSeatIds}}\n}"
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "POST /api/bookings/book - non-existent seat (409)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 409 Conflict', function () {",
+                  "    pm.response.to.have.status(409);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/bookings/book",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "bookings",
+                "book"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"userId\": {{validUserId}},\n  \"movieId\": {{validMovieId}},\n  \"seatIds\": [999999]\n}"
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "POST /api/bookings/book - success (stores bookingId)",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const u = pm.collectionVariables.get('signedUpUserId') || pm.collectionVariables.get('validUserId');",
+                  "pm.variables.set('bookingUserId', u);"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200 OK', function () { pm.response.to.have.status(200); });",
+                  "const json = pm.response.json();",
+                  "pm.test('Status is PENDING', function () { pm.expect(json.status).to.eql('PENDING'); });",
+                  "pm.test('totalAmount is positive', function () { pm.expect(json.totalAmount).to.be.above(0); });",
+                  "pm.collectionVariables.set('bookingId', json.id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/bookings/book",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "bookings",
+                "book"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"userId\": {{bookingUserId}},\n  \"movieId\": {{validMovieId}},\n  \"seatIds\": {{availableSeatIds}}\n}"
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "POST /api/bookings/{{bookingId}}/confirm - success",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200 OK', function () { pm.response.to.have.status(200); });",
+                  "pm.test('Status is CONFIRMED', function () { pm.expect(pm.response.json().status).to.eql('CONFIRMED'); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/bookings/{{bookingId}}/confirm",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "bookings",
+                "{{bookingId}}",
+                "confirm"
+              ]
+            },
+            "description": ""
+          },
+          "response": []
+        },
+        {
+          "name": "POST /api/bookings/{{bookingId}}/confirm - already confirmed (409)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 409 Conflict', function () {",
+                  "    pm.response.to.have.status(409);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/bookings/{{bookingId}}/confirm",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "bookings",
+                "{{bookingId}}",
+                "confirm"
+              ]
+            },
+            "description": ""
+          },
+          "response": []
+        },
+        {
+          "name": "POST /api/bookings/999999/confirm - not found (404)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 404 Not Found', function () {",
+                  "    pm.response.to.have.status(404);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/bookings/999999/confirm",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "bookings",
+                "999999",
+                "confirm"
+              ]
+            },
+            "description": ""
+          },
+          "response": []
+        },
+        {
+          "name": "Setup: book seats for cancel flow (stores bookingIdCancel)",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const u = pm.collectionVariables.get('signedUpUserId') || pm.collectionVariables.get('validUserId');",
+                  "pm.variables.set('bookingUserId', u);"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200 OK', function () { pm.response.to.have.status(200); });",
+                  "pm.collectionVariables.set('bookingIdCancel', pm.response.json().id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/bookings/book",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "bookings",
+                "book"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"userId\": {{bookingUserId}},\n  \"movieId\": 1,\n  \"seatIds\": {{theatre2SeatIds}}\n}"
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "POST /api/bookings/{{bookingIdCancel}}/cancel - success",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200 OK', function () { pm.response.to.have.status(200); });",
+                  "pm.test('Status is CANCELLED', function () { pm.expect(pm.response.json().status).to.eql('CANCELLED'); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/bookings/{{bookingIdCancel}}/cancel",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "bookings",
+                "{{bookingIdCancel}}",
+                "cancel"
+              ]
+            },
+            "description": ""
+          },
+          "response": []
+        },
+        {
+          "name": "POST /api/bookings/{{bookingIdCancel}}/cancel - idempotent (already cancelled)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200 OK', function () { pm.response.to.have.status(200); });",
+                  "pm.test('Status is CANCELLED', function () { pm.expect(pm.response.json().status).to.eql('CANCELLED'); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/bookings/{{bookingIdCancel}}/cancel",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "bookings",
+                "{{bookingIdCancel}}",
+                "cancel"
+              ]
+            },
+            "description": ""
+          },
+          "response": []
+        },
+        {
+          "name": "POST /api/bookings/999999/cancel - not found (404)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 404 Not Found', function () {",
+                  "    pm.response.to.have.status(404);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/bookings/999999/cancel",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "bookings",
+                "999999",
+                "cancel"
+              ]
+            },
+            "description": ""
+          },
+          "response": []
+        },
+        {
+          "name": "POST /api/bookings/cleanup-expired - run cleanup",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200 OK', function () { pm.response.to.have.status(200); });",
+                  "pm.test('Body is numeric count', function () {",
+                  "    const n = Number(pm.response.text());",
+                  "    pm.expect(Number.isNaN(n)).to.eql(false);",
+                  "    pm.expect(n).to.be.at.least(0);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/bookings/cleanup-expired",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "bookings",
+                "cleanup-expired"
+              ]
+            },
+            "description": ""
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Payments",
+      "description": "Stripe/Razorpay on PENDING bookings. Run a fresh Book success before Stripe initiate if confirm already ran on bookingId.",
+      "item": [
+        {
+          "name": "Setup: book seats for Stripe payment (stores bookingIdPay)",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const u = pm.collectionVariables.get('signedUpUserId') || pm.collectionVariables.get('validUserId');",
+                  "pm.variables.set('bookingUserId', u);"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200 OK', function () { pm.response.to.have.status(200); });",
+                  "const json = pm.response.json();",
+                  "pm.test('PENDING', function () { pm.expect(json.status).to.eql('PENDING'); });",
+                  "pm.collectionVariables.set('bookingIdPay', json.id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/bookings/book",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "bookings",
+                "book"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"userId\": {{bookingUserId}},\n  \"movieId\": 1,\n  \"seatIds\": [8, 9]\n}"
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "POST /api/payments/initiate - Stripe (stores paymentId)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 201 Created', function () { pm.response.to.have.status(201); });",
+                  "const json = pm.response.json();",
+                  "pm.test('Provider is STRIPE', function () { pm.expect(json.provider).to.eql('STRIPE'); });",
+                  "pm.test('Status is PENDING', function () { pm.expect(json.status).to.eql('PENDING'); });",
+                  "pm.test('checkoutUrl present', function () { pm.expect(json.checkoutUrl).to.be.a('string').and.not.empty; });",
+                  "pm.collectionVariables.set('paymentId', json.paymentId);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/payments/initiate",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "payments",
+                "initiate"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"bookingId\": {{bookingIdPay}},\n  \"provider\": \"STRIPE\"\n}"
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "POST /api/payments/callback - success -> booking CONFIRMED",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200 OK', function () { pm.response.to.have.status(200); });",
+                  "const json = pm.response.json();",
+                  "pm.test('Payment SUCCESS', function () { pm.expect(json.status).to.eql('SUCCESS'); });",
+                  "pm.test('Booking CONFIRMED', function () { pm.expect(json.bookingStatus).to.eql('CONFIRMED'); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/payments/callback",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "payments",
+                "callback"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"paymentId\": {{paymentId}},\n  \"paymentReference\": \"pay_stripe_demo_001\",\n  \"signature\": \"\",\n  \"success\": true\n}"
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "POST /api/payments/callback - already processed (409)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 409 Conflict', function () {",
+                  "    pm.response.to.have.status(409);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/payments/callback",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "payments",
+                "callback"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"paymentId\": {{paymentId}},\n  \"paymentReference\": \"pay_stripe_demo_001\",\n  \"signature\": \"\",\n  \"success\": true\n}"
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "GET /api/payments/{{paymentId}} - fetch payment",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200 OK', function () { pm.response.to.have.status(200); });",
+                  "pm.test('Payment SUCCESS', function () { pm.expect(pm.response.json().status).to.eql('SUCCESS'); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/payments/{{paymentId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "payments",
+                "{{paymentId}}"
+              ]
+            },
+            "description": ""
+          },
+          "response": []
+        },
+        {
+          "name": "POST /api/payments/initiate - on CONFIRMED booking (409)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 409 Conflict', function () {",
+                  "    pm.response.to.have.status(409);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/payments/initiate",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "payments",
+                "initiate"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"bookingId\": {{bookingIdPay}},\n  \"provider\": \"STRIPE\"\n}"
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "POST /api/payments/initiate - missing provider (400)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 400 Bad Request', function () {",
+                  "    pm.response.to.have.status(400);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/payments/initiate",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "payments",
+                "initiate"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"bookingId\": {{validUserId}}\n}"
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "POST /api/payments/initiate - bookingId zero (400)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 400 Bad Request', function () {",
+                  "    pm.response.to.have.status(400);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/payments/initiate",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "payments",
+                "initiate"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"bookingId\": 0,\n  \"provider\": \"STRIPE\"\n}"
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "POST /api/payments/initiate - booking not found (409)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 409 Conflict', function () {",
+                  "    pm.response.to.have.status(409);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/payments/initiate",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "payments",
+                "initiate"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"bookingId\": 999999,\n  \"provider\": \"STRIPE\"\n}"
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "POST /api/payments/initiate - on seed CONFIRMED booking (409)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 409 Conflict', function () {",
+                  "    pm.response.to.have.status(409);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/payments/initiate",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "payments",
+                "initiate"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"bookingId\": {{seedConfirmedBookingId}},\n  \"provider\": \"STRIPE\"\n}"
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Setup: book for Razorpay fail (stores bookingIdFail)",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const u = pm.collectionVariables.get('signedUpUserId') || pm.collectionVariables.get('validUserId');",
+                  "pm.variables.set('bookingUserId', u);"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.collectionVariables.set('bookingIdFail', pm.response.json().id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/bookings/book",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "bookings",
+                "book"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"userId\": {{bookingUserId}},\n  \"movieId\": 1,\n  \"seatIds\": [6, 7]\n}"
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "POST /api/payments/initiate - Razorpay (stores paymentIdFail)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 201 Created', function () { pm.response.to.have.status(201); });",
+                  "pm.test('Provider is RAZORPAY', function () { pm.expect(pm.response.json().provider).to.eql('RAZORPAY'); });",
+                  "pm.collectionVariables.set('paymentIdFail', pm.response.json().paymentId);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/payments/initiate",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "payments",
+                "initiate"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"bookingId\": {{bookingIdFail}},\n  \"provider\": \"RAZORPAY\"\n}"
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "POST /api/payments/callback - failure -> booking CANCELLED",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Payment FAILED', function () { pm.expect(pm.response.json().status).to.eql('FAILED'); });",
+                  "pm.test('Booking CANCELLED', function () { pm.expect(pm.response.json().bookingStatus).to.eql('CANCELLED'); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/payments/callback",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "payments",
+                "callback"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"paymentId\": {{paymentIdFail}},\n  \"paymentReference\": \"pay_rzp_fail\",\n  \"signature\": \"\",\n  \"success\": false\n}"
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Setup: book seat for bad-signature test (stores bookingIdBadSig)",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const u = pm.collectionVariables.get('signedUpUserId') || pm.collectionVariables.get('validUserId');",
+                  "pm.variables.set('bookingUserId', u);"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200 OK', function () { pm.response.to.have.status(200); });",
+                  "pm.collectionVariables.set('bookingIdBadSig', pm.response.json().id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/bookings/book",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "bookings",
+                "book"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"userId\": {{bookingUserId}},\n  \"movieId\": 1,\n  \"seatIds\": [6]\n}"
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "POST /api/payments/initiate - Stripe for bad-signature test (stores paymentIdBadSig)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 201 Created', function () { pm.response.to.have.status(201); });",
+                  "pm.collectionVariables.set('paymentIdBadSig', pm.response.json().paymentId);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/payments/initiate",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "payments",
+                "initiate"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"bookingId\": {{bookingIdBadSig}},\n  \"provider\": \"STRIPE\"\n}"
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "POST /api/payments/callback - invalid Stripe signature -> FAILED + CANCELLED",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200 OK', function () { pm.response.to.have.status(200); });",
+                  "const json = pm.response.json();",
+                  "pm.test('Payment FAILED', function () { pm.expect(json.status).to.eql('FAILED'); });",
+                  "pm.test('Booking CANCELLED', function () { pm.expect(json.bookingStatus).to.eql('CANCELLED'); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/payments/callback",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "payments",
+                "callback"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"paymentId\": {{paymentIdBadSig}},\n  \"paymentReference\": \"pay_bad_sig\",\n  \"signature\": \"invalid_not_whsec_prefix\",\n  \"success\": true\n}"
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "POST /api/payments/callback - paymentId zero (400)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 400 Bad Request', function () {",
+                  "    pm.response.to.have.status(400);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/payments/callback",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "payments",
+                "callback"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"paymentId\": 0,\n  \"success\": true\n}"
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "POST /api/payments/callback - payment not found (404)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 404 Not Found', function () {",
+                  "    pm.response.to.have.status(404);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/payments/callback",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "payments",
+                "callback"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"paymentId\": 999999,\n  \"paymentReference\": \"x\",\n  \"success\": true\n}"
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "GET /api/payments/999999 - not found (404)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 404 Not Found', function () {",
+                  "    pm.response.to.have.status(404);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/payments/999999",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "payments",
+                "999999"
+              ]
+            },
+            "description": ""
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Security Edge Cases",
+      "description": "Protected endpoints must reject missing or invalid JWT.",
+      "item": [
+        {
+          "name": "POST /api/bookings/book - missing token (401)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 401 Unauthorized', function () {",
+                  "    pm.response.to.have.status(401);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/bookings/book",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "bookings",
+                "book"
+              ]
+            },
+            "description": "",
+            "auth": {
+              "type": "noauth"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"userId\": {{validUserId}},\n  \"movieId\": 1,\n  \"seatIds\": [1]\n}"
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "POST /api/bookings/book - invalid token (401)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 401 Unauthorized', function () {",
+                  "    pm.response.to.have.status(401);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer eyJhbGciOiJIUzI1NiJ9.invalid"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/bookings/book",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "bookings",
+                "book"
+              ]
+            },
+            "description": "",
+            "auth": {
+              "type": "noauth"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"userId\": {{validUserId}},\n  \"movieId\": 1,\n  \"seatIds\": [1]\n}"
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "POST /api/payments/initiate - missing token (401)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 401 Unauthorized', function () {",
+                  "    pm.response.to.have.status(401);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/payments/initiate",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "payments",
+                "initiate"
+              ]
+            },
+            "description": "",
+            "auth": {
+              "type": "noauth"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"bookingId\": 1,\n  \"provider\": \"STRIPE\"\n}"
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "POST /api/payments/callback - missing token (401)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 401 Unauthorized', function () {",
+                  "    pm.response.to.have.status(401);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/payments/callback",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "payments",
+                "callback"
+              ]
+            },
+            "description": "",
+            "auth": {
+              "type": "noauth"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"paymentId\": 1,\n  \"success\": true\n}"
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "POST /api/payments/initiate - refresh token as access (401)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 401 Unauthorized', function () {",
+                  "    pm.response.to.have.status(401);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/payments/initiate",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "payments",
+                "initiate"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"bookingId\": 1,\n  \"provider\": \"STRIPE\"\n}"
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{refreshToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "GET /api/payments/1 - missing token (401)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 401 Unauthorized', function () {",
+                  "    pm.response.to.have.status(401);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/payments/1",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "payments",
+                "1"
+              ]
+            },
+            "description": "",
+            "auth": {
+              "type": "noauth"
+            }
           },
           "response": []
         }
@@ -1974,46 +2767,6 @@
       "type": "string"
     },
     {
-      "key": "validShowId",
-      "value": "2",
-      "type": "string"
-    },
-    {
-      "key": "validShowSeatIds",
-      "value": "[6,7]",
-      "type": "string"
-    },
-    {
-      "key": "bookedShowSeatIds",
-      "value": "[3]",
-      "type": "string"
-    },
-    {
-      "key": "blockedShowSeatIds",
-      "value": "[5]",
-      "type": "string"
-    },
-    {
-      "key": "mixedShowSeatIds",
-      "value": "[1,6]",
-      "type": "string"
-    },
-    {
-      "key": "ticketId",
-      "value": "",
-      "type": "string"
-    },
-    {
-      "key": "changedAfterEpochMs",
-      "value": "0",
-      "type": "string"
-    },
-    {
-      "key": "lastServerTime",
-      "value": "",
-      "type": "string"
-    },
-    {
       "key": "loginEmail",
       "value": "",
       "type": "string"
@@ -2030,6 +2783,91 @@
     },
     {
       "key": "refreshToken",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "validMovieId",
+      "value": "1",
+      "type": "string"
+    },
+    {
+      "key": "movieNotInTheatre1",
+      "value": "3",
+      "type": "string"
+    },
+    {
+      "key": "availableSeatIds",
+      "value": "[1, 2]",
+      "type": "string"
+    },
+    {
+      "key": "theatre2SeatIds",
+      "value": "[6, 7]",
+      "type": "string"
+    },
+    {
+      "key": "bookedSeatIds",
+      "value": "[3]",
+      "type": "string"
+    },
+    {
+      "key": "blockedSeatIds",
+      "value": "[5]",
+      "type": "string"
+    },
+    {
+      "key": "mixedTheatreSeatIds",
+      "value": "[1, 6]",
+      "type": "string"
+    },
+    {
+      "key": "duplicateSeatIds",
+      "value": "[1, 1]",
+      "type": "string"
+    },
+    {
+      "key": "seedConfirmedBookingId",
+      "value": "1",
+      "type": "string"
+    },
+    {
+      "key": "bookingId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "bookingIdPay",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "bookingIdCancel",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "bookingIdFail",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "paymentId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "paymentIdFail",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "bookingIdBadSig",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "paymentIdBadSig",
       "value": "",
       "type": "string"
     }

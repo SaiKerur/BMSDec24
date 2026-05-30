@@ -3,24 +3,36 @@ package org.example.bmsdec24.models;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
-import lombok.Data;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.ManyToOne;
 
+@Entity(name = "seats")
+public class Seat extends BaseModel {
 
-@Entity
-public class Seat extends BaseModel{
+    private String seatNumber;
 
-    private String name;
-    @Enumerated(value = EnumType.ORDINAL)
+    @Enumerated(EnumType.STRING)
     private SeatType seatType;
-    private int rowNum;
-    private int colNum;
 
-    public String getName() {
-        return name;
+    private double price;
+
+    @Enumerated(EnumType.STRING)
+    private SeatStatus seatStatus;
+
+    @ManyToOne
+    @JoinColumn(name = "theatre_id")
+    private Theatre theatre;
+
+    @ManyToOne
+    @JoinColumn(name = "booked_by_user_id")
+    private User bookedBy;
+
+    public String getSeatNumber() {
+        return seatNumber;
     }
 
-    public void setName(String name) {
-        this.name = name;
+    public void setSeatNumber(String seatNumber) {
+        this.seatNumber = seatNumber;
     }
 
     public SeatType getSeatType() {
@@ -31,19 +43,35 @@ public class Seat extends BaseModel{
         this.seatType = seatType;
     }
 
-    public int getRowNum() {
-        return rowNum;
+    public double getPrice() {
+        return price;
     }
 
-    public void setRowNum(int rowNum) {
-        this.rowNum = rowNum;
+    public void setPrice(double price) {
+        this.price = price;
     }
 
-    public int getColNum() {
-        return colNum;
+    public SeatStatus getSeatStatus() {
+        return seatStatus;
     }
 
-    public void setColNum(int colNum) {
-        this.colNum = colNum;
+    public void setSeatStatus(SeatStatus seatStatus) {
+        this.seatStatus = seatStatus;
+    }
+
+    public Theatre getTheatre() {
+        return theatre;
+    }
+
+    public void setTheatre(Theatre theatre) {
+        this.theatre = theatre;
+    }
+
+    public User getBookedBy() {
+        return bookedBy;
+    }
+
+    public void setBookedBy(User bookedBy) {
+        this.bookedBy = bookedBy;
     }
 }
