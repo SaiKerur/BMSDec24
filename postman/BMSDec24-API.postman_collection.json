@@ -1647,6 +1647,621 @@
       ]
     },
     {
+      "name": "Payments",
+      "description": "Strategy-pattern payment flow. After booking seats (PENDING ticket) the user is directed here: initiate a payment with STRIPE or RAZORPAY, then the provider callback confirms (success) or cancels (failure) the booking. Run after Auth → Login success so the bearer token is set.",
+      "item": [
+        {
+          "name": "Setup: book seats for Stripe success (stores paymentTicketId)",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const signedUpUserId = pm.collectionVariables.get('signedUpUserId');",
+                  "const fallbackUserId = pm.collectionVariables.get('validUserId');",
+                  "pm.variables.set('bookingUserId', signedUpUserId || fallbackUserId);"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200 OK', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "const json = pm.response.json();",
+                  "pm.test('Ticket is PENDING', function () {",
+                  "    pm.expect(json.status).to.eql('PENDING');",
+                  "});",
+                  "",
+                  "pm.collectionVariables.set('paymentTicketId', json.id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"userId\": {{bookingUserId}},\n  \"showSeatIds\": {{stripeShowSeatIds}}\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/tickets/book",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "tickets",
+                "book"
+              ]
+            },
+            "description": "Books fresh available seats so the Stripe payment flow has a PENDING ticket to operate on."
+          },
+          "response": []
+        },
+        {
+          "name": "POST /api/payments/initiate - Stripe (stores paymentId)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 201 Created', function () {",
+                  "    pm.response.to.have.status(201);",
+                  "});",
+                  "",
+                  "const json = pm.response.json();",
+                  "",
+                  "pm.test('Payment id is present', function () {",
+                  "    pm.expect(json.paymentId).to.be.a('number').and.above(0);",
+                  "});",
+                  "",
+                  "pm.test('Provider is STRIPE', function () {",
+                  "    pm.expect(json.provider).to.eql('STRIPE');",
+                  "});",
+                  "",
+                  "pm.test('Payment status is PENDING', function () {",
+                  "    pm.expect(json.status).to.eql('PENDING');",
+                  "});",
+                  "",
+                  "pm.test('Amount is positive', function () {",
+                  "    pm.expect(json.amount).to.be.a('number').and.above(0);",
+                  "});",
+                  "",
+                  "pm.test('Checkout details present', function () {",
+                  "    pm.expect(json.gatewayOrderId).to.be.a('string').and.not.empty;",
+                  "    pm.expect(json.checkoutUrl).to.be.a('string').and.not.empty;",
+                  "});",
+                  "",
+                  "pm.collectionVariables.set('paymentId', json.paymentId);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"ticketId\": {{paymentTicketId}},\n  \"provider\": \"STRIPE\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/payments/initiate",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "payments",
+                "initiate"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "POST /api/payments/callback - success -> ticket CONFIRMED",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200 OK', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "const json = pm.response.json();",
+                  "",
+                  "pm.test('Payment status is SUCCESS', function () {",
+                  "    pm.expect(json.status).to.eql('SUCCESS');",
+                  "});",
+                  "",
+                  "pm.test('Ticket status is CONFIRMED', function () {",
+                  "    pm.expect(json.ticketStatus).to.eql('CONFIRMED');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"paymentId\": {{paymentId}},\n  \"paymentReference\": \"pay_stripe_demo_001\",\n  \"signature\": \"\",\n  \"success\": true\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/payments/callback",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "payments",
+                "callback"
+              ]
+            },
+            "description": "Simulates Stripe reporting a successful capture. The gateway verifies the signature, then the booking is confirmed."
+          },
+          "response": []
+        },
+        {
+          "name": "POST /api/payments/callback - already processed (409)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 409 Conflict', function () {",
+                  "    pm.response.to.have.status(409);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"paymentId\": {{paymentId}},\n  \"paymentReference\": \"pay_stripe_demo_001\",\n  \"signature\": \"\",\n  \"success\": true\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/payments/callback",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "payments",
+                "callback"
+              ]
+            },
+            "description": "Re-posting a callback for an already settled payment must be rejected."
+          },
+          "response": []
+        },
+        {
+          "name": "GET /api/payments/{{paymentId}} - fetch settled payment",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200 OK', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "const json = pm.response.json();",
+                  "pm.test('Payment status is SUCCESS', function () {",
+                  "    pm.expect(json.status).to.eql('SUCCESS');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/payments/{{paymentId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "payments",
+                "{{paymentId}}"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "POST /api/payments/initiate - on CONFIRMED ticket (409)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 409 Conflict', function () {",
+                  "    pm.response.to.have.status(409);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"ticketId\": {{paymentTicketId}},\n  \"provider\": \"STRIPE\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/payments/initiate",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "payments",
+                "initiate"
+              ]
+            },
+            "description": "Only PENDING tickets can be paid; initiating on a CONFIRMED ticket is rejected."
+          },
+          "response": []
+        },
+        {
+          "name": "Setup: book seats for Razorpay failure (stores paymentTicketIdFail)",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const signedUpUserId = pm.collectionVariables.get('signedUpUserId');",
+                  "const fallbackUserId = pm.collectionVariables.get('validUserId');",
+                  "pm.variables.set('bookingUserId', signedUpUserId || fallbackUserId);"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200 OK', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "const json = pm.response.json();",
+                  "pm.collectionVariables.set('paymentTicketIdFail', json.id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"userId\": {{bookingUserId}},\n  \"showSeatIds\": {{razorpayShowSeatIds}}\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/tickets/book",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "tickets",
+                "book"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "POST /api/payments/initiate - Razorpay (stores paymentIdFail)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 201 Created', function () {",
+                  "    pm.response.to.have.status(201);",
+                  "});",
+                  "",
+                  "const json = pm.response.json();",
+                  "pm.test('Provider is RAZORPAY', function () {",
+                  "    pm.expect(json.provider).to.eql('RAZORPAY');",
+                  "});",
+                  "",
+                  "pm.collectionVariables.set('paymentIdFail', json.paymentId);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"ticketId\": {{paymentTicketIdFail}},\n  \"provider\": \"RAZORPAY\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/payments/initiate",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "payments",
+                "initiate"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "POST /api/payments/callback - failure -> ticket CANCELLED",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200 OK', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "const json = pm.response.json();",
+                  "",
+                  "pm.test('Payment status is FAILED', function () {",
+                  "    pm.expect(json.status).to.eql('FAILED');",
+                  "});",
+                  "",
+                  "pm.test('Ticket status is CANCELLED', function () {",
+                  "    pm.expect(json.ticketStatus).to.eql('CANCELLED');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"paymentId\": {{paymentIdFail}},\n  \"paymentReference\": \"pay_rzp_demo_fail\",\n  \"signature\": \"\",\n  \"success\": false\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/payments/callback",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "payments",
+                "callback"
+              ]
+            },
+            "description": "Simulates Razorpay reporting a failed payment. The booking is automatically cancelled and seats released."
+          },
+          "response": []
+        },
+        {
+          "name": "POST /api/payments/initiate - missing provider (400)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 400 Bad Request', function () {",
+                  "    pm.response.to.have.status(400);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"ticketId\": {{validUserId}}\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/payments/initiate",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "payments",
+                "initiate"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "POST /api/payments/initiate - ticket not found (404)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 404 Not Found', function () {",
+                  "    pm.response.to.have.status(404);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"ticketId\": 999999,\n  \"provider\": \"STRIPE\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/payments/initiate",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "payments",
+                "initiate"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "POST /api/payments/callback - payment not found (404)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 404 Not Found', function () {",
+                  "    pm.response.to.have.status(404);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"paymentId\": 999999,\n  \"paymentReference\": \"pay_missing\",\n  \"signature\": \"\",\n  \"success\": true\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/payments/callback",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "payments",
+                "callback"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "GET /api/payments/999999 - not found (404)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 404 Not Found', function () {",
+                  "    pm.response.to.have.status(404);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/payments/999999",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "payments",
+                "999999"
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
       "name": "Security Edge Cases",
       "description": "Validates that protected endpoints reject unauthenticated/malformed/invalid token requests.",
       "item": [
@@ -1937,6 +2552,94 @@
             "description": "Refresh tokens must not be accepted by JwtAuthenticationFilter for protected APIs."
           },
           "response": []
+        },
+        {
+          "name": "POST /api/payments/initiate - missing token (401)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 401 Unauthorized', function () {",
+                  "    pm.response.to.have.status(401);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"ticketId\": {{validUserId}},\n  \"provider\": \"STRIPE\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/payments/initiate",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "payments",
+                "initiate"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "POST /api/payments/callback - missing token (401)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 401 Unauthorized', function () {",
+                  "    pm.response.to.have.status(401);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"paymentId\": 1,\n  \"success\": true\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/payments/callback",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "payments",
+                "callback"
+              ]
+            }
+          },
+          "response": []
         }
       ]
     }
@@ -2030,6 +2733,36 @@
     },
     {
       "key": "refreshToken",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "stripeShowSeatIds",
+      "value": "[8,9]",
+      "type": "string"
+    },
+    {
+      "key": "razorpayShowSeatIds",
+      "value": "[10,11]",
+      "type": "string"
+    },
+    {
+      "key": "paymentTicketId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "paymentTicketIdFail",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "paymentId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "paymentIdFail",
       "value": "",
       "type": "string"
     }

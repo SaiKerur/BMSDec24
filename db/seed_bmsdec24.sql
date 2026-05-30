@@ -9,6 +9,7 @@ SET SQL_SAFE_UPDATES = 0;
 
 SET FOREIGN_KEY_CHECKS = 0;
 
+TRUNCATE TABLE payments;
 TRUNCATE TABLE tickets_show_seats;
 TRUNCATE TABLE tickets;
 TRUNCATE TABLE show_seats;
@@ -127,6 +128,14 @@ INSERT INTO tickets_show_seats (show_seats_id, tickets_id) VALUES
   (4, 1),
   (5, 2),
   (12, 3);
+
+-- payments.provider enum ordinal: 0=STRIPE, 1=RAZORPAY
+-- payments.status enum ordinal:   0=PENDING, 1=SUCCESS, 2=FAILED
+-- Ticket 1 (CONFIRMED) was paid successfully via Stripe; ticket 3 (CANCELLED)
+-- had a failed Razorpay attempt.
+INSERT INTO payments (id, amount, currency, provider, status, gateway_order_id, gateway_payment_reference, failure_reason, ticket_id, created_at, updated_at) VALUES
+  (1, 430.0, 'INR', 0, 1, 'pi_seed_stripe_0001', 'pay_seed_stripe_0001', NULL, 1, NOW(), NOW()),
+  (2, 200.0, 'INR', 1, 2, 'order_seed_rzp_0001', NULL, 'Razorpay reported the payment as failed', 3, NOW(), NOW());
 
 SELECT 'Seed complete' AS status;
 
