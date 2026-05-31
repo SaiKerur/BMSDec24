@@ -1,14 +1,21 @@
 package org.example.bmsdec24.payments;
 
+import org.example.bmsdec24.exceptions.PaymentGatewayException;
 import org.example.bmsdec24.models.PaymentProvider;
+import org.example.bmsdec24.payments.adapter.StripeClientAdapter;
 import org.springframework.stereotype.Component;
 
-import java.util.UUID;
-
+/**
+ * Strategy implementation for Stripe — delegates SDK calls to {@link StripeClientAdapter}.
+ */
 @Component
 public class StripePaymentGateway implements PaymentGateway {
 
-    private static final String SIGNATURE_PREFIX = "whsec_";
+    private final StripeClientAdapter stripeClientAdapter;
+
+    public StripePaymentGateway(StripeClientAdapter stripeClientAdapter) {
+        this.stripeClientAdapter = stripeClientAdapter;
+    }
 
     @Override
     public PaymentProvider getProvider() {
@@ -17,25 +24,23 @@ public class StripePaymentGateway implements PaymentGateway {
 
     @Override
     public GatewayOrder createOrder(GatewayChargeRequest request) {
-        String intentId = "pi_" + UUID.randomUUID().toString().replace("-", "");
-        String clientSecret = intentId + "_secret_" + UUID.randomUUID().toString().substring(0, 8);
-        String checkoutUrl = "https://checkout.stripe.com/pay/" + intentId;
-        return new GatewayOrder(intentId, checkoutUrl, clientSecret);
+        try {
+            return stripeClientAdapter.createPaymentIntent(request);
+        } catch (PaymentGatewayException e) {
+            throw e;
+        } catch (RuntimeException e) {
+            throw new PaymentGatewayException("Stripe order creation failed: " + e.getMessage(), e);
+        }
     }
 
     @Override
     public GatewayVerificationResult verify(GatewayVerificationRequest request) {
-        if (!isSignatureValid(request)) {
-            return GatewayVerificationResult.failure(request.getPaymentReference(), "Invalid Stripe webhook signature");
+        try {
+            return stripeClientAdapter.verifyPayment(request);
+        } catch (PaymentGatewayException e) {
+            throw e;
+        } catch (RuntimeException e) {
+            throw new PaymentGatewayException("Stripe payment verification failed: " + e.getMessage(), e);
         }
-        if (!request.isReportedSuccess()) {
-            return GatewayVerificationResult.failure(request.getPaymentReference(), "Stripe reported the payment as failed");
-        }
-        return GatewayVerificationResult.success(request.getPaymentReference());
-    }
-
-    private boolean isSignatureValid(GatewayVerificationRequest request) {
-        String signature = request.getSignature();
-        return signature == null || signature.isBlank() || signature.startsWith(SIGNATURE_PREFIX);
     }
 }

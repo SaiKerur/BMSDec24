@@ -60,19 +60,21 @@ public class BookingServiceImpl implements BookingService {
 
         List<Seat> seats = lockAndValidateSeats(seatIds, movieId);
 
+        Theatre theatre = seats.get(0).getTheatre();
         seats.forEach(seat -> {
             seat.setSeatStatus(SeatStatus.BLOCKED);
             seat.setBookedBy(user);
+            seat.syncDenormalizedNames();
         });
         seatRepository.saveAll(seats);
 
-        Theatre theatre = seats.get(0).getTheatre();
         double totalAmount = seats.stream().mapToDouble(Seat::getPrice).sum();
 
         Booking booking = new Booking();
         booking.setUser(user);
         booking.setMovie(movie);
         booking.setTheatre(theatre);
+        booking.syncDenormalizedNames();
         booking.setSeats(seats);
         booking.setStatus(BookingStatus.PENDING);
         booking.setTotalAmount(totalAmount);
@@ -110,7 +112,10 @@ public class BookingServiceImpl implements BookingService {
             }
         }
 
-        booking.getSeats().forEach(seat -> seat.setSeatStatus(SeatStatus.BOOKED));
+        booking.getSeats().forEach(seat -> {
+            seat.setSeatStatus(SeatStatus.BOOKED);
+            seat.syncDenormalizedNames();
+        });
         seatRepository.saveAll(booking.getSeats());
 
         booking.setStatus(BookingStatus.CONFIRMED);
@@ -203,6 +208,7 @@ public class BookingServiceImpl implements BookingService {
         seats.forEach(seat -> {
             seat.setSeatStatus(SeatStatus.AVAILABLE);
             seat.setBookedBy(null);
+            seat.setBookedByUserName(null);
         });
         seatRepository.saveAll(seats);
     }

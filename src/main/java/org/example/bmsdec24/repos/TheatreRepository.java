@@ -13,6 +13,6 @@ public interface TheatreRepository extends JpaRepository<Theatre, Integer> {
 
     List<Theatre> findAllByCity_Id(int cityId);
 
-    @EntityGraph(attributePaths = {"movies"})
+    @EntityGraph(attributePaths = {"theatreMovies", "theatreMovies.movie"})
     Optional<Theatre> findWithMoviesById(int theatreId);
 }

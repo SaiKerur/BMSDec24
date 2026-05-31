@@ -1,13 +1,14 @@
 package org.example.bmsdec24.models;
 
+import jakarta.persistence.CascadeType;
 import jakarta.persistence.Entity;
 import jakarta.persistence.JoinColumn;
-import jakarta.persistence.JoinTable;
-import jakarta.persistence.ManyToMany;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.OneToMany;
 
+import java.util.Collections;
 import java.util.List;
+import java.util.stream.Collectors;
 
 @Entity(name = "theatres")
 public class Theatre extends BaseModel {
@@ -23,12 +24,8 @@ public class Theatre extends BaseModel {
     @OneToMany(mappedBy = "theatre")
     private List<Seat> seats;
 
-    @ManyToMany
-    @JoinTable(
-            name = "theatre_movies",
-            joinColumns = @JoinColumn(name = "theatre_id"),
-            inverseJoinColumns = @JoinColumn(name = "movie_id"))
-    private List<Movie> movies;
+    @OneToMany(mappedBy = "theatre", cascade = CascadeType.ALL, orphanRemoval = true)
+    private List<TheatreMovie> theatreMovies;
 
     public String getName() {
         return name;
@@ -62,11 +59,20 @@ public class Theatre extends BaseModel {
         this.seats = seats;
     }
 
-    public List<Movie> getMovies() {
-        return movies;
+    public List<TheatreMovie> getTheatreMovies() {
+        return theatreMovies;
     }
 
-    public void setMovies(List<Movie> movies) {
-        this.movies = movies;
+    public void setTheatreMovies(List<TheatreMovie> theatreMovies) {
+        this.theatreMovies = theatreMovies;
+    }
+
+    public List<Movie> getMovies() {
+        if (theatreMovies == null) {
+            return Collections.emptyList();
+        }
+        return theatreMovies.stream()
+                .map(TheatreMovie::getMovie)
+                .collect(Collectors.toList());
     }
 }

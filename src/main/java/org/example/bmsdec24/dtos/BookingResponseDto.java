@@ -18,6 +18,9 @@ public class BookingResponseDto {
     private BookingStatus status;
     private double totalAmount;
     private Date holdExpiresAt;
+    private String userName;
+    private String movieName;
+    private String theatreName;
 
     public static BookingResponseDto from(Booking booking) {
         BookingResponseDto dto = new BookingResponseDto();
@@ -35,6 +38,9 @@ public class BookingResponseDto {
         dto.setStatus(booking.getStatus());
         dto.setTotalAmount(booking.getTotalAmount());
         dto.setHoldExpiresAt(booking.getHoldExpiresAt());
+        dto.setUserName(booking.getUserName());
+        dto.setMovieName(booking.getMovieName());
+        dto.setTheatreName(booking.getTheatreName());
         return dto;
     }
 
@@ -116,5 +122,29 @@ public class BookingResponseDto {
 
     public void setHoldExpiresAt(Date holdExpiresAt) {
         this.holdExpiresAt = holdExpiresAt;
+    }
+
+    public String getUserName() {
+        return userName;
+    }
+
+    public void setUserName(String userName) {
+        this.userName = userName;
+    }
+
+    public String getMovieName() {
+        return movieName;
+    }
+
+    public void setMovieName(String movieName) {
+        this.movieName = movieName;
+    }
+
+    public String getTheatreName() {
+        return theatreName;
+    }
+
+    public void setTheatreName(String theatreName) {
+        this.theatreName = theatreName;
     }
 }

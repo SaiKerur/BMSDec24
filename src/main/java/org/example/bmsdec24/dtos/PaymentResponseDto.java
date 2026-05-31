@@ -15,6 +15,7 @@ public class PaymentResponseDto {
     private String gatewayOrderId;
     private String checkoutUrl;
     private String clientSecret;
+    private String publishableKey;
     private String paymentReference;
     private String failureReason;
     private BookingStatus bookingStatus;
@@ -106,6 +107,14 @@ public class PaymentResponseDto {
 
     public void setClientSecret(String clientSecret) {
         this.clientSecret = clientSecret;
+    }
+
+    public String getPublishableKey() {
+        return publishableKey;
+    }
+
+    public void setPublishableKey(String publishableKey) {
+        this.publishableKey = publishableKey;
     }
 
     public String getPaymentReference() {
