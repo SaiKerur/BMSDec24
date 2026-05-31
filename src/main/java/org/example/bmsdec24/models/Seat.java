@@ -1,5 +1,6 @@
 package org.example.bmsdec24.models;
 
+import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
@@ -26,6 +27,12 @@ public class Seat extends BaseModel {
     @ManyToOne
     @JoinColumn(name = "booked_by_user_id")
     private User bookedBy;
+
+    @Column(name = "booked_by_user_name")
+    private String bookedByUserName;
+
+    @Column(name = "theatre_name")
+    private String theatreName;
 
     public String getSeatNumber() {
         return seatNumber;
@@ -65,6 +72,7 @@ public class Seat extends BaseModel {
 
     public void setTheatre(Theatre theatre) {
         this.theatre = theatre;
+        syncDenormalizedNames();
     }
 
     public User getBookedBy() {
@@ -73,5 +81,31 @@ public class Seat extends BaseModel {
 
     public void setBookedBy(User bookedBy) {
         this.bookedBy = bookedBy;
+        this.bookedByUserName = bookedBy != null ? bookedBy.getName() : null;
+    }
+
+    public String getBookedByUserName() {
+        return bookedByUserName;
+    }
+
+    public void setBookedByUserName(String bookedByUserName) {
+        this.bookedByUserName = bookedByUserName;
+    }
+
+    public String getTheatreName() {
+        return theatreName;
+    }
+
+    public void setTheatreName(String theatreName) {
+        this.theatreName = theatreName;
+    }
+
+    public void syncDenormalizedNames() {
+        if (theatre != null) {
+            this.theatreName = theatre.getName();
+        }
+        if (bookedBy != null) {
+            this.bookedByUserName = bookedBy.getName();
+        }
     }
 }

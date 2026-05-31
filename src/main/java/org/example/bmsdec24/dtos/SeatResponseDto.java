@@ -10,6 +10,8 @@ public class SeatResponseDto {
     private SeatType seatType;
     private double price;
     private SeatStatus seatStatus;
+    private String bookedByUserName;
+    private String theatreName;
 
     public static SeatResponseDto from(Seat seat) {
         if (seat == null) {
@@ -21,6 +23,8 @@ public class SeatResponseDto {
         dto.setSeatType(seat.getSeatType());
         dto.setPrice(seat.getPrice());
         dto.setSeatStatus(seat.getSeatStatus());
+        dto.setBookedByUserName(seat.getBookedByUserName());
+        dto.setTheatreName(seat.getTheatreName());
         return dto;
     }
 
@@ -62,5 +66,21 @@ public class SeatResponseDto {
 
     public void setSeatStatus(SeatStatus seatStatus) {
         this.seatStatus = seatStatus;
+    }
+
+    public String getBookedByUserName() {
+        return bookedByUserName;
+    }
+
+    public void setBookedByUserName(String bookedByUserName) {
+        this.bookedByUserName = bookedByUserName;
+    }
+
+    public String getTheatreName() {
+        return theatreName;
+    }
+
+    public void setTheatreName(String theatreName) {
+        this.theatreName = theatreName;
     }
 }

@@ -1,7 +1,9 @@
 package org.example.bmsdec24.controllers.api;
 
+import org.example.bmsdec24.dtos.ApiErrorDto;
 import org.example.bmsdec24.dtos.InitiatePaymentRequestDto;
 import org.example.bmsdec24.dtos.PaymentCallbackRequestDto;
+import org.example.bmsdec24.dtos.PaymentProviderOptionDto;
 import org.example.bmsdec24.dtos.PaymentResponseDto;
 import org.example.bmsdec24.exceptions.InvalidPaymentException;
 import org.example.bmsdec24.exceptions.PaymentAlreadyProcessedException;
@@ -15,6 +17,8 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.util.List;
+
 @RestController
 @RequestMapping("/api/payments")
 public class PaymentRestController {
@@ -25,8 +29,13 @@ public class PaymentRestController {
         this.paymentService = paymentService;
     }
 
+    @GetMapping("/providers")
+    public ResponseEntity<List<PaymentProviderOptionDto>> listProviders() {
+        return ResponseEntity.ok(paymentService.listAvailableProviders());
+    }
+
     @PostMapping("/initiate")
-    public ResponseEntity<PaymentResponseDto> initiatePayment(@RequestBody InitiatePaymentRequestDto requestDto) {
+    public ResponseEntity<?> initiatePayment(@RequestBody InitiatePaymentRequestDto requestDto) {
         try {
             if (requestDto == null || requestDto.getBookingId() <= 0 || requestDto.getProvider() == null) {
                 return ResponseEntity.badRequest().build();
@@ -35,14 +44,18 @@ public class PaymentRestController {
                     requestDto.getBookingId(), requestDto.getProvider());
             return ResponseEntity.status(HttpStatus.CREATED).body(response);
         } catch (InvalidPaymentException e) {
-            return ResponseEntity.status(HttpStatus.CONFLICT).build();
+            HttpStatus status = e.getMessage() != null && e.getMessage().contains("not found")
+                    ? HttpStatus.NOT_FOUND
+                    : HttpStatus.CONFLICT;
+            return ResponseEntity.status(status).body(new ApiErrorDto(e.getMessage()));
         } catch (Exception e) {
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(new ApiErrorDto("Payment initiation failed"));
         }
     }
 
     @PostMapping("/callback")
-    public ResponseEntity<PaymentResponseDto> handleCallback(@RequestBody PaymentCallbackRequestDto requestDto) {
+    public ResponseEntity<?> handleCallback(@RequestBody PaymentCallbackRequestDto requestDto) {
         try {
             if (requestDto == null || requestDto.getPaymentId() <= 0) {
                 return ResponseEntity.badRequest().build();
@@ -54,22 +67,23 @@ public class PaymentRestController {
                     requestDto.isSuccess());
             return ResponseEntity.ok(response);
         } catch (InvalidPaymentException e) {
-            return ResponseEntity.status(HttpStatus.NOT_FOUND).build();
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(new ApiErrorDto(e.getMessage()));
         } catch (PaymentAlreadyProcessedException e) {
-            return ResponseEntity.status(HttpStatus.CONFLICT).build();
+            return ResponseEntity.status(HttpStatus.CONFLICT).body(new ApiErrorDto(e.getMessage()));
         } catch (Exception e) {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
         }
     }
 
     @GetMapping("/{paymentId}")
-    public ResponseEntity<PaymentResponseDto> getPayment(@PathVariable int paymentId) {
+    public ResponseEntity<?> getPayment(@PathVariable int paymentId) {
         try {
             return ResponseEntity.ok(paymentService.getPayment(paymentId));
         } catch (InvalidPaymentException e) {
-            return ResponseEntity.status(HttpStatus.NOT_FOUND).build();
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(new ApiErrorDto(e.getMessage()));
         } catch (Exception e) {
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(new ApiErrorDto("Failed to fetch payment"));
         }
     }
 }

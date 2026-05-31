@@ -68,12 +68,19 @@ const collection = {
 2. Users → Signup success → Signup duplicate
 3. Auth → Login success (stores accessToken) → Auth edge cases
 4. Bookings → negative cases (use seed data) → Book success → Confirm/Cancel edges
-5. Payments → Stripe happy path → Razorpay failure path → Payment edges
+5. Payments → List providers → Stripe mock happy path → Razorpay mock happy path → Razorpay failure → Signature edge cases → Payment edges
 6. Security Edge Cases
 
 **Prerequisites:** Run db/seed_bmsdec24.sql after starting the app once (Hibernate creates tables).
 
-**Seed reference:** Theatre 1 (Orion PVR) movies 1,2 — seats 1-2 AVAILABLE, 3-4 BOOKED, 5 BLOCKED. Theatre 2 movies 1,3 — seats 6-9 AVAILABLE.`,
+**Payments (mock mode — default \`bms.payment.mock-enabled=true\`):** No Stripe/Razorpay API keys required. Mock adapters return fake order/intent ids. Use these callback signatures:
+- **Stripe success:** \`signature\` must start with \`whsec_\` (e.g. \`whsec_postman_mock\`)
+- **Razorpay success:** \`signature\` must start with \`rzp_sig_\` (e.g. \`rzp_sig_postman_mock\`)
+- **Invalid signature:** any other non-empty value (see bad-signature requests)
+
+Initiate responses store \`gatewayOrderId\`, \`clientSecret\`, and \`publishableKey\` (Stripe) for checkout simulation. Set \`bms.payment.mock-enabled=false\` and real keys in application.properties for live SDK calls.
+
+**Seed reference:** Theatre 1 (Orion PVR) movies 1,2 — seats 1-2 AVAILABLE, 3-4 BOOKED, 5 BLOCKED. Theatre 2 (PVR Phoenix) movies 1,3 — seats 6-9 AVAILABLE.`,
     schema: 'https://schema.getpostman.com/json/collection/v2.1.0/collection.json'
   },
   auth: {
@@ -363,8 +370,24 @@ const collection = {
     },
     {
       name: 'Payments',
-      description: 'Stripe/Razorpay on PENDING bookings. Run a fresh Book success before Stripe initiate if confirm already ran on bookingId.',
+      description: 'Strategy (STRIPE | RAZORPAY) + mock adapters by default. Run Login first. List providers, book PENDING seats, initiate, then callback with mock signatures.',
       item: [
+        item('GET /api/payments/providers - list STRIPE and RAZORPAY',
+          req('GET', '/api/payments/providers'),
+          [
+            "pm.test('Status is 200 OK', function () { pm.response.to.have.status(200); });",
+            "const providers = pm.response.json();",
+            "pm.test('Returns STRIPE and RAZORPAY', function () {",
+            "    pm.expect(providers).to.be.an('array').with.lengthOf(2);",
+            "    const codes = providers.map(p => p.provider);",
+            "    pm.expect(codes).to.include('STRIPE');",
+            "    pm.expect(codes).to.include('RAZORPAY');",
+            "});",
+            "pm.test('Mock mode: both providers configured', function () {",
+            "    providers.forEach(p => pm.expect(p.configured, p.provider + ' configured').to.be.true);",
+            "});"
+          ]
+        ),
         item('Setup: book seats for Stripe payment (stores bookingIdPay)',
           req('POST', '/api/bookings/book', {
             body: '{\n  "userId": {{bookingUserId}},\n  "movieId": 1,\n  "seatIds": [8, 9]\n}'
@@ -377,7 +400,7 @@ const collection = {
           ],
           prerequestBookingUser
         ),
-        item('POST /api/payments/initiate - Stripe (stores paymentId)',
+        item('POST /api/payments/initiate - Stripe mock (stores paymentId, gatewayOrderId)',
           req('POST', '/api/payments/initiate', {
             body: '{\n  "bookingId": {{bookingIdPay}},\n  "provider": "STRIPE"\n}'
           }),
@@ -386,13 +409,19 @@ const collection = {
             "const json = pm.response.json();",
             "pm.test('Provider is STRIPE', function () { pm.expect(json.provider).to.eql('STRIPE'); });",
             "pm.test('Status is PENDING', function () { pm.expect(json.status).to.eql('PENDING'); });",
-            "pm.test('checkoutUrl present', function () { pm.expect(json.checkoutUrl).to.be.a('string').and.not.empty; });",
-            "pm.collectionVariables.set('paymentId', json.paymentId);"
+            "pm.test('checkoutUrl present', function () { pm.expect(json.checkoutUrl).to.include('stripe.com'); });",
+            "pm.test('clientSecret present (mock PaymentIntent)', function () { pm.expect(json.clientSecret).to.be.a('string').and.not.empty; });",
+            "pm.test('publishableKey present', function () { pm.expect(json.publishableKey).to.be.a('string').and.not.empty; });",
+            "pm.test('gatewayOrderId is mock pi_*', function () { pm.expect(json.gatewayOrderId).to.match(/^pi_/); });",
+            "pm.collectionVariables.set('paymentId', json.paymentId);",
+            "pm.collectionVariables.set('gatewayOrderIdStripe', json.gatewayOrderId);",
+            "pm.collectionVariables.set('stripeClientSecret', json.clientSecret || '');",
+            "pm.collectionVariables.set('stripePublishableKey', json.publishableKey || '');"
           ]
         ),
-        item('POST /api/payments/callback - success -> booking CONFIRMED',
+        item('POST /api/payments/callback - Stripe mock success (whsec_) -> CONFIRMED',
           req('POST', '/api/payments/callback', {
-            body: '{\n  "paymentId": {{paymentId}},\n  "paymentReference": "pay_stripe_demo_001",\n  "signature": "",\n  "success": true\n}'
+            body: '{\n  "paymentId": {{paymentId}},\n  "paymentReference": "{{gatewayOrderIdStripe}}",\n  "signature": "{{stripeMockSignature}}",\n  "success": true\n}'
           }),
           [
             "pm.test('Status is 200 OK', function () { pm.response.to.have.status(200); });",
@@ -403,7 +432,7 @@ const collection = {
         ),
         item('POST /api/payments/callback - already processed (409)',
           req('POST', '/api/payments/callback', {
-            body: '{\n  "paymentId": {{paymentId}},\n  "paymentReference": "pay_stripe_demo_001",\n  "signature": "",\n  "success": true\n}'
+            body: '{\n  "paymentId": {{paymentId}},\n  "paymentReference": "{{gatewayOrderIdStripe}}",\n  "signature": "{{stripeMockSignature}}",\n  "success": true\n}'
           }),
           testStatus(409, 'Status is 409 Conflict')
         ),
@@ -444,11 +473,48 @@ const collection = {
           }),
           testStatus(409, 'Status is 409 Conflict')
         ),
-        item('Setup: book for Razorpay fail (stores bookingIdFail)',
+        item('Setup: book seats for Razorpay mock success (stores bookingIdRzp)',
           req('POST', '/api/bookings/book', {
             body: '{\n  "userId": {{bookingUserId}},\n  "movieId": 1,\n  "seatIds": [6, 7]\n}'
           }),
           [
+            "pm.test('Status is 200 OK', function () { pm.response.to.have.status(200); });",
+            "pm.collectionVariables.set('bookingIdRzp', pm.response.json().id);"
+          ],
+          prerequestBookingUser
+        ),
+        item('POST /api/payments/initiate - Razorpay mock (stores paymentIdRzp, gatewayOrderId)',
+          req('POST', '/api/payments/initiate', {
+            body: '{\n  "bookingId": {{bookingIdRzp}},\n  "provider": "RAZORPAY"\n}'
+          }),
+          [
+            "pm.test('Status is 201 Created', function () { pm.response.to.have.status(201); });",
+            "const json = pm.response.json();",
+            "pm.test('Provider is RAZORPAY', function () { pm.expect(json.provider).to.eql('RAZORPAY'); });",
+            "pm.test('checkoutUrl present', function () { pm.expect(json.checkoutUrl).to.include('razorpay.com'); });",
+            "pm.test('clientSecret is Razorpay key id', function () { pm.expect(json.clientSecret).to.match(/^rzp_/); });",
+            "pm.test('gatewayOrderId is mock order_*', function () { pm.expect(json.gatewayOrderId).to.match(/^order_/); });",
+            "pm.collectionVariables.set('paymentIdRzp', json.paymentId);",
+            "pm.collectionVariables.set('gatewayOrderIdRazorpay', json.gatewayOrderId);"
+          ]
+        ),
+        item('POST /api/payments/callback - Razorpay mock success (rzp_sig_) -> CONFIRMED',
+          req('POST', '/api/payments/callback', {
+            body: '{\n  "paymentId": {{paymentIdRzp}},\n  "paymentReference": "pay_rzp_mock_success",\n  "signature": "{{razorpayMockSignature}}",\n  "success": true\n}'
+          }),
+          [
+            "pm.test('Status is 200 OK', function () { pm.response.to.have.status(200); });",
+            "const json = pm.response.json();",
+            "pm.test('Payment SUCCESS', function () { pm.expect(json.status).to.eql('SUCCESS'); });",
+            "pm.test('Booking CONFIRMED', function () { pm.expect(json.bookingStatus).to.eql('CONFIRMED'); });"
+          ]
+        ),
+        item('Setup: book for Razorpay fail (stores bookingIdFail)',
+          req('POST', '/api/bookings/book', {
+            body: '{\n  "userId": {{bookingUserId}},\n  "movieId": 1,\n  "seatIds": [1, 2]\n}'
+          }),
+          [
+            "pm.test('Status is 200 OK', function () { pm.response.to.have.status(200); });",
             "pm.collectionVariables.set('bookingIdFail', pm.response.json().id);"
           ],
           prerequestBookingUser
@@ -463,18 +529,18 @@ const collection = {
             "pm.collectionVariables.set('paymentIdFail', pm.response.json().paymentId);"
           ]
         ),
-        item('POST /api/payments/callback - failure -> booking CANCELLED',
+        item('POST /api/payments/callback - Razorpay reported failure -> CANCELLED',
           req('POST', '/api/payments/callback', {
-            body: '{\n  "paymentId": {{paymentIdFail}},\n  "paymentReference": "pay_rzp_fail",\n  "signature": "",\n  "success": false\n}'
+            body: '{\n  "paymentId": {{paymentIdFail}},\n  "paymentReference": "pay_rzp_fail",\n  "signature": "{{razorpayMockSignature}}",\n  "success": false\n}'
           }),
           [
             "pm.test('Payment FAILED', function () { pm.expect(pm.response.json().status).to.eql('FAILED'); });",
             "pm.test('Booking CANCELLED', function () { pm.expect(pm.response.json().bookingStatus).to.eql('CANCELLED'); });"
           ]
         ),
-        item('Setup: book seat for bad-signature test (stores bookingIdBadSig)',
+        item('Setup: book seat for Stripe bad-signature test (stores bookingIdBadSig)',
           req('POST', '/api/bookings/book', {
-            body: '{\n  "userId": {{bookingUserId}},\n  "movieId": 1,\n  "seatIds": [6]\n}'
+            body: '{\n  "userId": {{bookingUserId}},\n  "movieId": 1,\n  "seatIds": [1]\n}'
           }),
           [
             "pm.test('Status is 200 OK', function () { pm.response.to.have.status(200); });",
@@ -491,7 +557,7 @@ const collection = {
             "pm.collectionVariables.set('paymentIdBadSig', pm.response.json().paymentId);"
           ]
         ),
-        item('POST /api/payments/callback - invalid Stripe signature -> FAILED + CANCELLED',
+        item('POST /api/payments/callback - invalid Stripe mock signature -> FAILED + CANCELLED',
           req('POST', '/api/payments/callback', {
             body: '{\n  "paymentId": {{paymentIdBadSig}},\n  "paymentReference": "pay_bad_sig",\n  "signature": "invalid_not_whsec_prefix",\n  "success": true\n}'
           }),
@@ -517,6 +583,38 @@ const collection = {
         item('GET /api/payments/999999 - not found (404)',
           req('GET', '/api/payments/999999'),
           testStatus(404, 'Status is 404 Not Found')
+        ),
+        item('Setup: book for invalid Razorpay signature (stores bookingIdRzpBadSig)',
+          req('POST', '/api/bookings/book', {
+            body: '{\n  "userId": {{bookingUserId}},\n  "movieId": 1,\n  "seatIds": [2]\n}'
+          }),
+          [
+            "pm.collectionVariables.set('bookingIdRzpBadSig', pm.response.json().id);"
+          ],
+          prerequestBookingUser
+        ),
+        item('POST /api/payments/initiate - Razorpay for bad-signature test',
+          req('POST', '/api/payments/initiate', {
+            body: '{\n  "bookingId": {{bookingIdRzpBadSig}},\n  "provider": "RAZORPAY"\n}'
+          }),
+          [
+            "pm.collectionVariables.set('paymentIdRzpBadSig', pm.response.json().paymentId);"
+          ]
+        ),
+        item('POST /api/payments/callback - invalid Razorpay mock signature -> FAILED',
+          req('POST', '/api/payments/callback', {
+            body: '{\n  "paymentId": {{paymentIdRzpBadSig}},\n  "paymentReference": "pay_rzp_bad",\n  "signature": "invalid_not_rzp_sig_prefix",\n  "success": true\n}'
+          }),
+          [
+            "pm.test('Status is 200 OK', function () { pm.response.to.have.status(200); });",
+            "const json = pm.response.json();",
+            "pm.test('Payment FAILED', function () { pm.expect(json.status).to.eql('FAILED'); });",
+            "pm.test('Booking CANCELLED', function () { pm.expect(json.bookingStatus).to.eql('CANCELLED'); });"
+          ]
+        ),
+        item('GET /api/payments/providers - missing token (401)',
+          req('GET', '/api/payments/providers', { auth: 'noauth' }),
+          testStatus(401, 'Status is 401 Unauthorized')
         )
       ]
     },
@@ -595,7 +693,17 @@ const collection = {
     { key: 'paymentId', value: '', type: 'string' },
     { key: 'paymentIdFail', value: '', type: 'string' },
     { key: 'bookingIdBadSig', value: '', type: 'string' },
-    { key: 'paymentIdBadSig', value: '', type: 'string' }
+    { key: 'paymentIdBadSig', value: '', type: 'string' },
+    { key: 'stripeMockSignature', value: 'whsec_postman_mock', type: 'string' },
+    { key: 'razorpayMockSignature', value: 'rzp_sig_postman_mock', type: 'string' },
+    { key: 'gatewayOrderIdStripe', value: '', type: 'string' },
+    { key: 'gatewayOrderIdRazorpay', value: '', type: 'string' },
+    { key: 'stripeClientSecret', value: '', type: 'string' },
+    { key: 'stripePublishableKey', value: '', type: 'string' },
+    { key: 'bookingIdRzp', value: '', type: 'string' },
+    { key: 'paymentIdRzp', value: '', type: 'string' },
+    { key: 'bookingIdRzpBadSig', value: '', type: 'string' },
+    { key: 'paymentIdRzpBadSig', value: '', type: 'string' }
   ]
 };
 

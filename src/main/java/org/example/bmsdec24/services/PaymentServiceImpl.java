@@ -1,7 +1,10 @@
 package org.example.bmsdec24.services;
 
+import org.example.bmsdec24.config.PaymentProperties;
+import org.example.bmsdec24.dtos.PaymentProviderOptionDto;
 import org.example.bmsdec24.dtos.PaymentResponseDto;
 import org.example.bmsdec24.exceptions.BookingAlreadyProcessedException;
+import org.example.bmsdec24.exceptions.PaymentGatewayException;
 import org.example.bmsdec24.exceptions.InvalidBookingException;
 import org.example.bmsdec24.exceptions.InvalidPaymentException;
 import org.example.bmsdec24.exceptions.PaymentAlreadyProcessedException;
@@ -24,6 +27,8 @@ import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.Date;
+import java.util.List;
+import java.util.Optional;
 
 @Service
 public class PaymentServiceImpl implements PaymentService {
@@ -34,15 +39,32 @@ public class PaymentServiceImpl implements PaymentService {
     private final BookingRepository bookingRepository;
     private final PaymentGatewayFactory paymentGatewayFactory;
     private final BookingService bookingService;
+    private final PaymentProperties paymentProperties;
 
     public PaymentServiceImpl(PaymentRepository paymentRepository,
                               BookingRepository bookingRepository,
                               PaymentGatewayFactory paymentGatewayFactory,
-                              BookingService bookingService) {
+                              BookingService bookingService,
+                              PaymentProperties paymentProperties) {
         this.paymentRepository = paymentRepository;
         this.bookingRepository = bookingRepository;
         this.paymentGatewayFactory = paymentGatewayFactory;
         this.bookingService = bookingService;
+        this.paymentProperties = paymentProperties;
+    }
+
+    @Override
+    public List<PaymentProviderOptionDto> listAvailableProviders() {
+        boolean mock = paymentProperties.isMockEnabled();
+        return List.of(
+                new PaymentProviderOptionDto(
+                        PaymentProvider.STRIPE,
+                        "Stripe",
+                        mock || paymentProperties.getStripe().isConfigured()),
+                new PaymentProviderOptionDto(
+                        PaymentProvider.RAZORPAY,
+                        "Razorpay",
+                        mock || paymentProperties.getRazorpay().isConfigured()));
     }
 
     @Transactional(isolation = Isolation.READ_COMMITTED)
@@ -57,10 +79,25 @@ public class PaymentServiceImpl implements PaymentService {
                 .orElseThrow(() -> new InvalidPaymentException("Booking not found"));
 
         if (booking.getStatus() != BookingStatus.PENDING) {
-            throw new InvalidPaymentException("Only PENDING bookings can be paid. Current status: " + booking.getStatus());
+            throw new InvalidPaymentException(
+                    "Only PENDING bookings can be paid. Booking " + bookingId + " is " + booking.getStatus()
+                            + ". Create a new booking with POST /api/bookings/book.");
         }
-        if (booking.getHoldExpiresAt() != null && booking.getHoldExpiresAt().before(new Date())) {
-            throw new InvalidPaymentException("Booking hold has expired. Please book again.");
+
+        Date now = new Date();
+        if (booking.getHoldExpiresAt() != null && booking.getHoldExpiresAt().before(now)) {
+            safeCancelBooking(bookingId);
+            throw new InvalidPaymentException(
+                    "Booking hold has expired for booking " + bookingId + ". Please book seats again.");
+        }
+
+        Optional<Payment> existingPayment = paymentRepository.findFirstByBooking_IdAndStatus(
+                bookingId, PaymentStatus.PENDING);
+        if (existingPayment.isPresent()) {
+            throw new InvalidPaymentException(
+                    "Payment already initiated for booking " + bookingId
+                            + ". Use paymentId " + existingPayment.get().getId()
+                            + " in POST /api/payments/callback, or book again.");
         }
 
         PaymentGateway gateway = paymentGatewayFactory.getGateway(provider);
@@ -69,7 +106,12 @@ public class PaymentServiceImpl implements PaymentService {
                 booking.getTotalAmount(),
                 DEFAULT_CURRENCY,
                 booking.getUser() == null ? null : booking.getUser().getEmail());
-        GatewayOrder order = gateway.createOrder(chargeRequest);
+        GatewayOrder order;
+        try {
+            order = gateway.createOrder(chargeRequest);
+        } catch (PaymentGatewayException e) {
+            throw new InvalidPaymentException("Payment gateway error: " + e.getMessage());
+        }
 
         Payment payment = new Payment();
         payment.setBooking(booking);
@@ -83,6 +125,7 @@ public class PaymentServiceImpl implements PaymentService {
         PaymentResponseDto response = PaymentResponseDto.from(payment);
         response.setCheckoutUrl(order.getCheckoutUrl());
         response.setClientSecret(order.getClientSecret());
+        response.setPublishableKey(order.getPublishableKey());
         return response;
     }
 
@@ -103,8 +146,13 @@ public class PaymentServiceImpl implements PaymentService {
         }
 
         PaymentGateway gateway = paymentGatewayFactory.getGateway(payment.getProvider());
-        GatewayVerificationResult verification = gateway.verify(
-                new GatewayVerificationRequest(payment.getGatewayOrderId(), paymentReference, signature, reportedSuccess));
+        GatewayVerificationResult verification;
+        try {
+            verification = gateway.verify(
+                    new GatewayVerificationRequest(payment.getGatewayOrderId(), paymentReference, signature, reportedSuccess));
+        } catch (PaymentGatewayException e) {
+            throw new InvalidPaymentException("Payment gateway error: " + e.getMessage());
+        }
 
         payment.setGatewayPaymentReference(verification.getPaymentReference());
 

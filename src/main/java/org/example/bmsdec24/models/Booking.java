@@ -1,5 +1,6 @@
 package org.example.bmsdec24.models;
 
+import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
@@ -42,6 +43,15 @@ public class Booking extends BaseModel {
 
     @Temporal(TemporalType.TIMESTAMP)
     private Date holdExpiresAt;
+
+    @Column(name = "user_name")
+    private String userName;
+
+    @Column(name = "movie_name")
+    private String movieName;
+
+    @Column(name = "theatre_name")
+    private String theatreName;
 
     public User getUser() {
         return user;
@@ -97,5 +107,41 @@ public class Booking extends BaseModel {
 
     public void setHoldExpiresAt(Date holdExpiresAt) {
         this.holdExpiresAt = holdExpiresAt;
+    }
+
+    public String getUserName() {
+        return userName;
+    }
+
+    public void setUserName(String userName) {
+        this.userName = userName;
+    }
+
+    public String getMovieName() {
+        return movieName;
+    }
+
+    public void setMovieName(String movieName) {
+        this.movieName = movieName;
+    }
+
+    public String getTheatreName() {
+        return theatreName;
+    }
+
+    public void setTheatreName(String theatreName) {
+        this.theatreName = theatreName;
+    }
+
+    public void syncDenormalizedNames() {
+        if (user != null) {
+            this.userName = user.getName();
+        }
+        if (movie != null) {
+            this.movieName = movie.getTitle();
+        }
+        if (theatre != null) {
+            this.theatreName = theatre.getName();
+        }
     }
 }
