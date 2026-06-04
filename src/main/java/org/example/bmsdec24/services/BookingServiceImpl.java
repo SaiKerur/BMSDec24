@@ -143,6 +143,11 @@ public class BookingServiceImpl implements BookingService {
         return bookingRepository.findDetailedById(saved.getId()).orElse(saved);
     }
 
+    @Override
+    public Booking getBooking(int bookingId) throws InvalidBookingException {
+        return loadBooking(bookingId);
+    }
+
     @Transactional(isolation = Isolation.READ_COMMITTED)
     @Override
     public int releaseExpiredPendingBookings() {
