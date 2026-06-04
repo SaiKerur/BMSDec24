@@ -20,7 +20,7 @@ public class UserServiceImpl implements UserService {
     @Override
     public User signupUser(String name, String email, String password) throws UserAlreadyPresentException {
         if (userRepository.findByEmail(email) != null) {
-            throw new UserAlreadyPresentException("User is already present in DB");
+            throw new UserAlreadyPresentException("An account already exists for email: " + email);
         }
 
         String encodedPassword = passwordEncoder.encode(password);

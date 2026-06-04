@@ -3,6 +3,7 @@ package org.example.bmsdec24.controllers.api;
 import org.example.bmsdec24.dtos.ResponseStatus;
 import org.example.bmsdec24.dtos.SignupRequestDto;
 import org.example.bmsdec24.dtos.SignupResponseDto;
+import org.example.bmsdec24.exceptions.InvalidRequestException;
 import org.example.bmsdec24.exceptions.UserAlreadyPresentException;
 import org.example.bmsdec24.models.User;
 import org.example.bmsdec24.services.UserService;
@@ -24,20 +25,33 @@ public class UserRestController {
     }
 
     @PostMapping("/signup")
-    public ResponseEntity<SignupResponseDto> signUp(@RequestBody SignupRequestDto requestDto) {
+    public ResponseEntity<SignupResponseDto> signUp(@RequestBody SignupRequestDto requestDto)
+            throws UserAlreadyPresentException, InvalidRequestException {
+        validateSignupRequest(requestDto);
+        User user = userService.signupUser(requestDto.getName(), requestDto.getEmail(), requestDto.getPassword());
         SignupResponseDto responseDto = new SignupResponseDto();
-        try {
-            User user = userService.signupUser(requestDto.getName(), requestDto.getEmail(), requestDto.getPassword());
-            responseDto.setUserId(user.getId());
-            responseDto.setResponseStatus(ResponseStatus.SUCCESS);
-            return ResponseEntity.status(HttpStatus.CREATED).body(responseDto);
-        } catch (UserAlreadyPresentException e) {
-            responseDto.setResponseStatus(ResponseStatus.FAILURE);
-            return ResponseEntity.status(HttpStatus.CONFLICT).body(responseDto);
-        } catch (Exception e) {
-            responseDto.setResponseStatus(ResponseStatus.FAILURE);
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(responseDto);
+        responseDto.setUserId(user.getId());
+        responseDto.setResponseStatus(ResponseStatus.SUCCESS);
+        responseDto.setMessage("User registered successfully");
+        return ResponseEntity.status(HttpStatus.CREATED).body(responseDto);
+    }
+
+    private void validateSignupRequest(SignupRequestDto requestDto) throws InvalidRequestException {
+        if (requestDto == null) {
+            throw new InvalidRequestException("Request body is required with name, email, and password");
+        }
+        if (isBlank(requestDto.getName())) {
+            throw new InvalidRequestException("name is required");
+        }
+        if (isBlank(requestDto.getEmail())) {
+            throw new InvalidRequestException("email is required");
+        }
+        if (isBlank(requestDto.getPassword())) {
+            throw new InvalidRequestException("password is required");
         }
     }
-}
 
+    private boolean isBlank(String value) {
+        return value == null || value.isBlank();
+    }
+}

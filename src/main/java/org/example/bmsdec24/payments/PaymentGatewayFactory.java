@@ -21,7 +21,8 @@ public class PaymentGatewayFactory {
     public PaymentGateway getGateway(PaymentProvider provider) {
         PaymentGateway gateway = gatewaysByProvider.get(provider);
         if (gateway == null) {
-            throw new IllegalArgumentException("Unsupported payment provider: " + provider);
+            throw new IllegalArgumentException(
+                    "Unsupported payment provider: " + provider + ". Use STRIPE or RAZORPAY");
         }
         return gateway;
     }

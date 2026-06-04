@@ -1,9 +1,11 @@
 package org.example.bmsdec24.controllers.api;
 
+import org.example.bmsdec24.dtos.ApiErrorDto;
 import org.example.bmsdec24.dtos.LoginRequestDto;
 import org.example.bmsdec24.dtos.RefreshTokenRequestDto;
 import org.example.bmsdec24.dtos.TokenResponseDto;
 import org.example.bmsdec24.exceptions.InvalidCredentialsException;
+import org.example.bmsdec24.exceptions.InvalidRequestException;
 import org.example.bmsdec24.exceptions.InvalidTokenException;
 import org.example.bmsdec24.security.AuthenticatedUser;
 import org.example.bmsdec24.services.AuthService;
@@ -30,37 +32,36 @@ public class AuthController {
     }
 
     @PostMapping("/login")
-    public ResponseEntity<TokenResponseDto> login(@RequestBody LoginRequestDto requestDto) {
-        try {
-            TokenResponseDto response = authService.login(requestDto.getEmail(), requestDto.getPassword());
-            return ResponseEntity.ok(response);
-        } catch (InvalidCredentialsException e) {
-            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
-        } catch (Exception e) {
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
+    public ResponseEntity<TokenResponseDto> login(@RequestBody LoginRequestDto requestDto)
+            throws InvalidCredentialsException, InvalidRequestException {
+        if (requestDto == null || isBlank(requestDto.getEmail()) || isBlank(requestDto.getPassword())) {
+            throw new InvalidRequestException("email and password are required");
         }
+        return ResponseEntity.ok(authService.login(requestDto.getEmail(), requestDto.getPassword()));
     }
 
     @PostMapping("/refresh")
-    public ResponseEntity<TokenResponseDto> refresh(@RequestBody RefreshTokenRequestDto requestDto) {
-        try {
-            TokenResponseDto response = authService.refresh(requestDto.getRefreshToken());
-            return ResponseEntity.ok(response);
-        } catch (InvalidTokenException e) {
-            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
-        } catch (Exception e) {
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
+    public ResponseEntity<TokenResponseDto> refresh(@RequestBody RefreshTokenRequestDto requestDto)
+            throws InvalidTokenException, InvalidRequestException {
+        if (requestDto == null || isBlank(requestDto.getRefreshToken())) {
+            throw new InvalidRequestException("refreshToken is required");
         }
+        return ResponseEntity.ok(authService.refresh(requestDto.getRefreshToken()));
     }
 
     @GetMapping("/me")
-    public ResponseEntity<Map<String, Object>> me(@AuthenticationPrincipal AuthenticatedUser user, Authentication authentication) {
+    public ResponseEntity<?> me(@AuthenticationPrincipal AuthenticatedUser user, Authentication authentication) {
         if (user == null || authentication == null || !authentication.isAuthenticated()) {
-            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                    .body(ApiErrorDto.of("UNAUTHORIZED", "Valid access token is required"));
         }
         return ResponseEntity.ok(Map.of(
                 "userId", user.getUserId(),
                 "email", user.getEmail()
         ));
+    }
+
+    private boolean isBlank(String value) {
+        return value == null || value.isBlank();
     }
 }

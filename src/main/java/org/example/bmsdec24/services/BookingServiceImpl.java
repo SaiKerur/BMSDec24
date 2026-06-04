@@ -54,9 +54,9 @@ public class BookingServiceImpl implements BookingService {
     public Booking bookSeats(int userId, int movieId, List<Integer> seatIds)
             throws InvalidUserException, SeatsNotAvailableException {
         User user = userRepository.findById(userId)
-                .orElseThrow(() -> new InvalidUserException("User not found"));
+                .orElseThrow(() -> new InvalidUserException("No user found with id: " + userId));
         Movie movie = movieRepository.findById(movieId)
-                .orElseThrow(() -> new SeatsNotAvailableException("Movie not found"));
+                .orElseThrow(() -> new SeatsNotAvailableException("No movie found with id: " + movieId));
 
         List<Seat> seats = lockAndValidateSeats(seatIds, movieId);
 
@@ -91,16 +91,19 @@ public class BookingServiceImpl implements BookingService {
         Booking booking = loadBooking(bookingId);
 
         if (booking.getStatus() == BookingStatus.CONFIRMED) {
-            throw new BookingAlreadyProcessedException("Booking is already confirmed");
+            throw new BookingAlreadyProcessedException(
+                    "Booking " + bookingId + " is already CONFIRMED and cannot be confirmed again");
         }
         if (booking.getStatus() == BookingStatus.CANCELLED) {
-            throw new BookingAlreadyProcessedException("Booking is already cancelled");
+            throw new BookingAlreadyProcessedException(
+                    "Booking " + bookingId + " is CANCELLED and cannot be confirmed");
         }
 
         Date now = new Date();
         if (booking.getHoldExpiresAt() != null && booking.getHoldExpiresAt().before(now)) {
             expirePendingBooking(booking);
-            throw new SeatsNotAvailableException("Booking hold expired. Please book again.");
+            throw new SeatsNotAvailableException(
+                    "Booking " + bookingId + " hold expired. Please create a new booking with POST /api/bookings/book");
         }
 
         for (Seat seat : booking.getSeats()) {
@@ -108,7 +111,9 @@ public class BookingServiceImpl implements BookingService {
                     && seat.getBookedBy() != null
                     && seat.getBookedBy().getId() == booking.getUser().getId();
             if (!valid) {
-                throw new SeatsNotAvailableException("Some seats are no longer blocked for this booking");
+                throw new SeatsNotAvailableException(
+                        "Seat " + seat.getId() + " is not BLOCKED for user "
+                                + booking.getUser().getId() + " on booking " + bookingId);
             }
         }
 
@@ -151,31 +156,32 @@ public class BookingServiceImpl implements BookingService {
 
     private List<Seat> lockAndValidateSeats(List<Integer> seatIds, int movieId) throws SeatsNotAvailableException {
         if (seatIds == null || seatIds.isEmpty()) {
-            throw new SeatsNotAvailableException("At least one seat is required");
+            throw new SeatsNotAvailableException("At least one seatId is required to create a booking");
         }
 
         Set<Integer> uniqueIds = new LinkedHashSet<>(seatIds);
         if (uniqueIds.size() != seatIds.size()) {
-            throw new SeatsNotAvailableException("Duplicate seat IDs in request");
+            throw new SeatsNotAvailableException("seatIds must not contain duplicates");
         }
 
         List<Seat> seats = seatRepository.findAllByIdIn(uniqueIds.stream().toList());
         if (seats.size() != uniqueIds.size()) {
-            throw new SeatsNotAvailableException("Some seats do not exist");
+            throw new SeatsNotAvailableException("One or more seatIds do not exist: " + seatIds);
         }
 
         int theatreId = seats.get(0).getTheatre().getId();
         boolean multipleTheatres = seats.stream().anyMatch(s -> s.getTheatre().getId() != theatreId);
         if (multipleTheatres) {
-            throw new SeatsNotAvailableException("All seats must belong to the same theatre");
+            throw new SeatsNotAvailableException("All seatIds must belong to the same theatre");
         }
 
         Theatre theatre = theatreRepository.findWithMoviesById(theatreId)
-                .orElseThrow(() -> new SeatsNotAvailableException("Theatre not found"));
+                .orElseThrow(() -> new SeatsNotAvailableException("No theatre found with id: " + theatreId));
         boolean movieRunning = theatre.getMovies() != null
                 && theatre.getMovies().stream().anyMatch(m -> m.getId() == movieId);
         if (!movieRunning) {
-            throw new SeatsNotAvailableException("Movie is not running in this theatre");
+            throw new SeatsNotAvailableException(
+                    "Movie " + movieId + " is not running in theatre " + theatreId + " (" + theatre.getName() + ")");
         }
 
         List<Integer> unavailable = seats.stream()
@@ -183,7 +189,8 @@ public class BookingServiceImpl implements BookingService {
                 .map(Seat::getId)
                 .toList();
         if (!unavailable.isEmpty()) {
-            throw new SeatsNotAvailableException("Seats unavailable: " + unavailable);
+            throw new SeatsNotAvailableException(
+                    "Seats are not AVAILABLE (may be BLOCKED or BOOKED): " + unavailable);
         }
 
         return seats;
@@ -191,7 +198,7 @@ public class BookingServiceImpl implements BookingService {
 
     private Booking loadBooking(int bookingId) throws InvalidBookingException {
         return bookingRepository.findDetailedById(bookingId)
-                .orElseThrow(() -> new InvalidBookingException("Booking not found"));
+                .orElseThrow(() -> new InvalidBookingException("No booking found with id: " + bookingId));
     }
 
     private void expirePendingBooking(Booking booking) {
