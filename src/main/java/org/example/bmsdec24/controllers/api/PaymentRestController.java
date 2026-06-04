@@ -1,11 +1,11 @@
 package org.example.bmsdec24.controllers.api;
 
-import org.example.bmsdec24.dtos.ApiErrorDto;
 import org.example.bmsdec24.dtos.InitiatePaymentRequestDto;
 import org.example.bmsdec24.dtos.PaymentCallbackRequestDto;
 import org.example.bmsdec24.dtos.PaymentProviderOptionDto;
 import org.example.bmsdec24.dtos.PaymentResponseDto;
 import org.example.bmsdec24.exceptions.InvalidPaymentException;
+import org.example.bmsdec24.exceptions.InvalidRequestException;
 import org.example.bmsdec24.exceptions.PaymentAlreadyProcessedException;
 import org.example.bmsdec24.services.PaymentService;
 import org.springframework.http.HttpStatus;
@@ -35,55 +35,52 @@ public class PaymentRestController {
     }
 
     @PostMapping("/initiate")
-    public ResponseEntity<?> initiatePayment(@RequestBody InitiatePaymentRequestDto requestDto) {
-        try {
-            if (requestDto == null || requestDto.getBookingId() <= 0 || requestDto.getProvider() == null) {
-                return ResponseEntity.badRequest().build();
-            }
-            PaymentResponseDto response = paymentService.initiatePayment(
-                    requestDto.getBookingId(), requestDto.getProvider());
-            return ResponseEntity.status(HttpStatus.CREATED).body(response);
-        } catch (InvalidPaymentException e) {
-            HttpStatus status = e.getMessage() != null && e.getMessage().contains("not found")
-                    ? HttpStatus.NOT_FOUND
-                    : HttpStatus.CONFLICT;
-            return ResponseEntity.status(status).body(new ApiErrorDto(e.getMessage()));
-        } catch (Exception e) {
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body(new ApiErrorDto("Payment initiation failed"));
-        }
+    public ResponseEntity<PaymentResponseDto> initiatePayment(@RequestBody InitiatePaymentRequestDto requestDto)
+            throws InvalidPaymentException, InvalidRequestException {
+        validateInitiateRequest(requestDto);
+        PaymentResponseDto response = paymentService.initiatePayment(
+                requestDto.getBookingId(), requestDto.getProvider());
+        return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }
 
     @PostMapping("/callback")
-    public ResponseEntity<?> handleCallback(@RequestBody PaymentCallbackRequestDto requestDto) {
-        try {
-            if (requestDto == null || requestDto.getPaymentId() <= 0) {
-                return ResponseEntity.badRequest().build();
-            }
-            PaymentResponseDto response = paymentService.completePayment(
-                    requestDto.getPaymentId(),
-                    requestDto.getPaymentReference(),
-                    requestDto.getSignature(),
-                    requestDto.isSuccess());
-            return ResponseEntity.ok(response);
-        } catch (InvalidPaymentException e) {
-            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(new ApiErrorDto(e.getMessage()));
-        } catch (PaymentAlreadyProcessedException e) {
-            return ResponseEntity.status(HttpStatus.CONFLICT).body(new ApiErrorDto(e.getMessage()));
-        } catch (Exception e) {
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
-        }
+    public ResponseEntity<PaymentResponseDto> handleCallback(@RequestBody PaymentCallbackRequestDto requestDto)
+            throws InvalidPaymentException, PaymentAlreadyProcessedException, InvalidRequestException {
+        validateCallbackRequest(requestDto);
+        return ResponseEntity.ok(paymentService.completePayment(
+                requestDto.getPaymentId(),
+                requestDto.getPaymentReference(),
+                requestDto.getSignature(),
+                requestDto.isSuccess()));
     }
 
     @GetMapping("/{paymentId}")
-    public ResponseEntity<?> getPayment(@PathVariable int paymentId) {
-        try {
-            return ResponseEntity.ok(paymentService.getPayment(paymentId));
-        } catch (InvalidPaymentException e) {
-            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(new ApiErrorDto(e.getMessage()));
-        } catch (Exception e) {
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body(new ApiErrorDto("Failed to fetch payment"));
+    public ResponseEntity<PaymentResponseDto> getPayment(@PathVariable int paymentId)
+            throws InvalidPaymentException, InvalidRequestException {
+        if (paymentId <= 0) {
+            throw new InvalidRequestException("paymentId must be a positive integer");
+        }
+        return ResponseEntity.ok(paymentService.getPayment(paymentId));
+    }
+
+    private void validateInitiateRequest(InitiatePaymentRequestDto requestDto) throws InvalidRequestException {
+        if (requestDto == null) {
+            throw new InvalidRequestException("Request body is required with bookingId and provider (STRIPE or RAZORPAY)");
+        }
+        if (requestDto.getBookingId() <= 0) {
+            throw new InvalidRequestException("bookingId must be a positive integer");
+        }
+        if (requestDto.getProvider() == null) {
+            throw new InvalidRequestException("provider is required (STRIPE or RAZORPAY)");
+        }
+    }
+
+    private void validateCallbackRequest(PaymentCallbackRequestDto requestDto) throws InvalidRequestException {
+        if (requestDto == null) {
+            throw new InvalidRequestException("Request body is required with paymentId and success flag");
+        }
+        if (requestDto.getPaymentId() <= 0) {
+            throw new InvalidRequestException("paymentId must be a positive integer");
         }
     }
 }

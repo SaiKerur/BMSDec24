@@ -43,7 +43,7 @@ public class PaymentProperties {
         }
 
         public void setSecretKey(String secretKey) {
-            this.secretKey = secretKey;
+            this.secretKey = normalize(secretKey);
         }
 
         public String getPublishableKey() {
@@ -51,7 +51,7 @@ public class PaymentProperties {
         }
 
         public void setPublishableKey(String publishableKey) {
-            this.publishableKey = publishableKey;
+            this.publishableKey = normalize(publishableKey);
         }
 
         public String getWebhookSecret() {
@@ -59,11 +59,11 @@ public class PaymentProperties {
         }
 
         public void setWebhookSecret(String webhookSecret) {
-            this.webhookSecret = webhookSecret;
+            this.webhookSecret = normalize(webhookSecret);
         }
 
         public boolean isConfigured() {
-            return secretKey != null && !secretKey.isBlank();
+            return secretKey != null && !secretKey.isBlank() && secretKey.startsWith("sk_");
         }
     }
 
@@ -76,7 +76,7 @@ public class PaymentProperties {
         }
 
         public void setKeyId(String keyId) {
-            this.keyId = keyId;
+            this.keyId = normalize(keyId);
         }
 
         public String getKeySecret() {
@@ -84,12 +84,16 @@ public class PaymentProperties {
         }
 
         public void setKeySecret(String keySecret) {
-            this.keySecret = keySecret;
+            this.keySecret = normalize(keySecret);
         }
 
         public boolean isConfigured() {
-            return keyId != null && !keyId.isBlank()
+            return keyId != null && !keyId.isBlank() && keyId.startsWith("rzp_")
                     && keySecret != null && !keySecret.isBlank();
         }
+    }
+
+    private static String normalize(String value) {
+        return value == null ? "" : value.trim();
     }
 }

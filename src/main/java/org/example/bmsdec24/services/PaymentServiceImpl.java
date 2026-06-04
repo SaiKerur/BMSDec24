@@ -76,7 +76,7 @@ public class PaymentServiceImpl implements PaymentService {
         }
 
         Booking booking = bookingRepository.findDetailedById(bookingId)
-                .orElseThrow(() -> new InvalidPaymentException("Booking not found"));
+                .orElseThrow(() -> new InvalidPaymentException("No booking found with id: " + bookingId));
 
         if (booking.getStatus() != BookingStatus.PENDING) {
             throw new InvalidPaymentException(
@@ -134,15 +134,16 @@ public class PaymentServiceImpl implements PaymentService {
     public PaymentResponseDto completePayment(int paymentId, String paymentReference, String signature, boolean reportedSuccess)
             throws InvalidPaymentException, PaymentAlreadyProcessedException {
         Payment payment = paymentRepository.findDetailedById(paymentId)
-                .orElseThrow(() -> new InvalidPaymentException("Payment not found"));
+                .orElseThrow(() -> new InvalidPaymentException("No payment found with id: " + paymentId));
 
         if (payment.getStatus() != PaymentStatus.PENDING) {
-            throw new PaymentAlreadyProcessedException("Payment is already " + payment.getStatus());
+            throw new PaymentAlreadyProcessedException(
+                    "Payment " + paymentId + " is already " + payment.getStatus() + " and cannot be updated");
         }
 
         Booking booking = payment.getBooking();
         if (booking == null) {
-            throw new InvalidPaymentException("Payment is not linked to a booking");
+            throw new InvalidPaymentException("Payment " + paymentId + " is not linked to any booking");
         }
 
         PaymentGateway gateway = paymentGatewayFactory.getGateway(payment.getProvider());
@@ -169,7 +170,7 @@ public class PaymentServiceImpl implements PaymentService {
     @Override
     public PaymentResponseDto getPayment(int paymentId) throws InvalidPaymentException {
         Payment payment = paymentRepository.findDetailedById(paymentId)
-                .orElseThrow(() -> new InvalidPaymentException("Payment not found"));
+                .orElseThrow(() -> new InvalidPaymentException("No payment found with id: " + paymentId));
         return PaymentResponseDto.from(payment);
     }
 
