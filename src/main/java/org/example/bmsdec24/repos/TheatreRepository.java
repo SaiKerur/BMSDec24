@@ -11,8 +11,9 @@ import java.util.Optional;
 @Repository
 public interface TheatreRepository extends JpaRepository<Theatre, Integer> {
 
+    @EntityGraph(attributePaths = {"city"})
     List<Theatre> findAllByCity_Id(int cityId);
 
-    @EntityGraph(attributePaths = {"theatreMovies", "theatreMovies.movie"})
+    @EntityGraph(attributePaths = {"theatreMovies", "theatreMovies.movie", "city"})
     Optional<Theatre> findWithMoviesById(int theatreId);
 }

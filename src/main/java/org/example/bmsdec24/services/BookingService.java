@@ -19,4 +19,6 @@ public interface BookingService {
     Booking cancelBooking(int bookingId) throws InvalidBookingException;
 
     int releaseExpiredPendingBookings();
+
+    Booking getBooking(int bookingId) throws InvalidBookingException;
 }

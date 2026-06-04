@@ -29,6 +29,12 @@ public class ApiExceptionHandler {
                 .body(ApiErrorDto.of("BOOKING_NOT_FOUND", message(ex, "Booking not found")));
     }
 
+    @ExceptionHandler(ResourceNotFoundException.class)
+    public ResponseEntity<ApiErrorDto> handleResourceNotFound(ResourceNotFoundException ex) {
+        return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                .body(ApiErrorDto.of("RESOURCE_NOT_FOUND", message(ex, "Resource not found")));
+    }
+
     @ExceptionHandler(SeatsNotAvailableException.class)
     public ResponseEntity<ApiErrorDto> handleSeatsNotAvailable(SeatsNotAvailableException ex) {
         return ResponseEntity.status(HttpStatus.CONFLICT)

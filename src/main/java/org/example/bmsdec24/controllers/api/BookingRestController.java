@@ -2,11 +2,13 @@ package org.example.bmsdec24.controllers.api;
 
 import org.example.bmsdec24.dtos.BookSeatsRequestDto;
 import org.example.bmsdec24.dtos.BookingResponseDto;
+import org.example.bmsdec24.exceptions.InvalidBookingException;
 import org.example.bmsdec24.exceptions.InvalidRequestException;
 import org.example.bmsdec24.exceptions.InvalidUserException;
 import org.example.bmsdec24.exceptions.SeatsNotAvailableException;
 import org.example.bmsdec24.services.BookingService;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -21,6 +23,15 @@ public class BookingRestController {
 
     public BookingRestController(BookingService bookingService) {
         this.bookingService = bookingService;
+    }
+
+    @GetMapping("/{bookingId}")
+    public ResponseEntity<BookingResponseDto> getBooking(@PathVariable int bookingId)
+            throws InvalidRequestException, InvalidBookingException {
+        if (bookingId <= 0) {
+            throw new InvalidRequestException("bookingId must be a positive integer");
+        }
+        return ResponseEntity.ok(BookingResponseDto.from(bookingService.getBooking(bookingId)));
     }
 
     @PostMapping("/book")
