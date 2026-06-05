@@ -9,11 +9,14 @@ import org.example.bmsdec24.models.BookingStatus;
 import org.example.bmsdec24.models.Movie;
 import org.example.bmsdec24.models.Seat;
 import org.example.bmsdec24.models.SeatStatus;
+import org.example.bmsdec24.models.Show;
+import org.example.bmsdec24.models.ShowSeat;
 import org.example.bmsdec24.models.Theatre;
 import org.example.bmsdec24.models.User;
 import org.example.bmsdec24.repos.BookingRepository;
 import org.example.bmsdec24.repos.MovieRepository;
 import org.example.bmsdec24.repos.SeatRepository;
+import org.example.bmsdec24.repos.ShowSeatRepository;
 import org.example.bmsdec24.repos.TheatreRepository;
 import org.example.bmsdec24.repos.UserRepository;
 import org.springframework.stereotype.Service;
@@ -35,17 +38,20 @@ public class BookingServiceImpl implements BookingService {
     private final MovieRepository movieRepository;
     private final TheatreRepository theatreRepository;
     private final SeatRepository seatRepository;
+    private final ShowSeatRepository showSeatRepository;
     private final BookingRepository bookingRepository;
 
     public BookingServiceImpl(UserRepository userRepository,
                               MovieRepository movieRepository,
                               TheatreRepository theatreRepository,
                               SeatRepository seatRepository,
+                              ShowSeatRepository showSeatRepository,
                               BookingRepository bookingRepository) {
         this.userRepository = userRepository;
         this.movieRepository = movieRepository;
         this.theatreRepository = theatreRepository;
         this.seatRepository = seatRepository;
+        this.showSeatRepository = showSeatRepository;
         this.bookingRepository = bookingRepository;
     }
 
@@ -74,6 +80,49 @@ public class BookingServiceImpl implements BookingService {
         booking.setUser(user);
         booking.setMovie(movie);
         booking.setTheatre(theatre);
+        booking.syncDenormalizedNames();
+        booking.setSeats(seats);
+        booking.setStatus(BookingStatus.PENDING);
+        booking.setTotalAmount(totalAmount);
+        booking.setHoldExpiresAt(Date.from(new Date().toInstant().plus(BOOKING_HOLD_DURATION)));
+
+        Booking saved = bookingRepository.save(booking);
+        return bookingRepository.findDetailedById(saved.getId()).orElse(saved);
+    }
+
+    @Transactional(isolation = Isolation.READ_COMMITTED)
+    @Override
+    public Booking bookShowSeats(int userId, List<Integer> showSeatIds)
+            throws InvalidUserException, SeatsNotAvailableException {
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new InvalidUserException("No user found with id: " + userId));
+        List<ShowSeat> showSeats = lockAndValidateShowSeats(showSeatIds);
+
+        showSeats.forEach(showSeat -> {
+            showSeat.setSeatStatus(SeatStatus.BLOCKED);
+            showSeat.setBookedBy(user);
+        });
+        showSeatRepository.saveAll(showSeats);
+
+        Show show = showSeats.get(0).getShow();
+        Movie movie = show.getMovie();
+        Theatre theatre = show.getScreen().getTheatre();
+        List<Seat> seats = showSeats.stream().map(ShowSeat::getSeat).toList();
+
+        seats.forEach(seat -> {
+            seat.setSeatStatus(SeatStatus.BLOCKED);
+            seat.setBookedBy(user);
+            seat.syncDenormalizedNames();
+        });
+        seatRepository.saveAll(seats);
+
+        double totalAmount = seats.stream().mapToDouble(Seat::getPrice).sum();
+
+        Booking booking = new Booking();
+        booking.setUser(user);
+        booking.setMovie(movie);
+        booking.setTheatre(theatre);
+        booking.setShow(show);
         booking.syncDenormalizedNames();
         booking.setSeats(seats);
         booking.setStatus(BookingStatus.PENDING);
@@ -122,6 +171,7 @@ public class BookingServiceImpl implements BookingService {
             seat.syncDenormalizedNames();
         });
         seatRepository.saveAll(booking.getSeats());
+        confirmShowSeats(booking);
 
         booking.setStatus(BookingStatus.CONFIRMED);
         booking.setHoldExpiresAt(null);
@@ -137,6 +187,7 @@ public class BookingServiceImpl implements BookingService {
             return booking;
         }
         releaseSeats(booking.getSeats());
+        releaseShowSeats(booking);
         booking.setStatus(BookingStatus.CANCELLED);
         booking.setHoldExpiresAt(null);
         Booking saved = bookingRepository.save(booking);
@@ -201,6 +252,39 @@ public class BookingServiceImpl implements BookingService {
         return seats;
     }
 
+    private List<ShowSeat> lockAndValidateShowSeats(List<Integer> showSeatIds) throws SeatsNotAvailableException {
+        if (showSeatIds == null || showSeatIds.isEmpty()) {
+            throw new SeatsNotAvailableException("At least one showSeatId is required to create a booking");
+        }
+
+        Set<Integer> uniqueIds = new LinkedHashSet<>(showSeatIds);
+        if (uniqueIds.size() != showSeatIds.size()) {
+            throw new SeatsNotAvailableException("showSeatIds must not contain duplicates");
+        }
+
+        List<ShowSeat> showSeats = showSeatRepository.findAllByIdIn(uniqueIds.stream().toList());
+        if (showSeats.size() != uniqueIds.size()) {
+            throw new SeatsNotAvailableException("One or more showSeatIds do not exist: " + showSeatIds);
+        }
+
+        int showId = showSeats.get(0).getShow().getId();
+        boolean multipleShows = showSeats.stream().anyMatch(s -> s.getShow().getId() != showId);
+        if (multipleShows) {
+            throw new SeatsNotAvailableException("All showSeatIds must belong to the same show");
+        }
+
+        List<Integer> unavailable = showSeats.stream()
+                .filter(s -> s.getSeatStatus() != SeatStatus.AVAILABLE)
+                .map(ShowSeat::getId)
+                .toList();
+        if (!unavailable.isEmpty()) {
+            throw new SeatsNotAvailableException(
+                    "Show seats are not AVAILABLE (may be BLOCKED or BOOKED): " + unavailable);
+        }
+
+        return showSeats;
+    }
+
     private Booking loadBooking(int bookingId) throws InvalidBookingException {
         return bookingRepository.findDetailedById(bookingId)
                 .orElseThrow(() -> new InvalidBookingException("No booking found with id: " + bookingId));
@@ -211,9 +295,37 @@ public class BookingServiceImpl implements BookingService {
             return;
         }
         releaseSeats(booking.getSeats());
+        releaseShowSeats(booking);
         booking.setStatus(BookingStatus.CANCELLED);
         booking.setHoldExpiresAt(null);
         bookingRepository.save(booking);
+    }
+
+    private void confirmShowSeats(Booking booking) {
+        if (booking.getShow() == null) {
+            return;
+        }
+        List<Integer> seatIds = booking.getSeats().stream().map(Seat::getId).toList();
+        List<ShowSeat> showSeats = showSeatRepository.findAllByShow_Id(booking.getShow().getId()).stream()
+                .filter(ss -> seatIds.contains(ss.getSeat().getId()))
+                .toList();
+        showSeats.forEach(ss -> ss.setSeatStatus(SeatStatus.BOOKED));
+        showSeatRepository.saveAll(showSeats);
+    }
+
+    private void releaseShowSeats(Booking booking) {
+        if (booking.getShow() == null) {
+            return;
+        }
+        List<Integer> seatIds = booking.getSeats().stream().map(Seat::getId).toList();
+        List<ShowSeat> showSeats = showSeatRepository.findAllByShow_Id(booking.getShow().getId()).stream()
+                .filter(ss -> seatIds.contains(ss.getSeat().getId()))
+                .toList();
+        showSeats.forEach(ss -> {
+            ss.setSeatStatus(SeatStatus.AVAILABLE);
+            ss.setBookedBy(null);
+        });
+        showSeatRepository.saveAll(showSeats);
     }
 
     private void releaseSeats(List<Seat> seats) {

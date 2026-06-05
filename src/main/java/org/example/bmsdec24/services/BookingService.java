@@ -13,6 +13,9 @@ public interface BookingService {
     Booking bookSeats(int userId, int movieId, List<Integer> seatIds)
             throws InvalidUserException, SeatsNotAvailableException;
 
+    Booking bookShowSeats(int userId, List<Integer> showSeatIds)
+            throws InvalidUserException, SeatsNotAvailableException;
+
     Booking confirmBooking(int bookingId)
             throws InvalidBookingException, SeatsNotAvailableException, BookingAlreadyProcessedException;
 

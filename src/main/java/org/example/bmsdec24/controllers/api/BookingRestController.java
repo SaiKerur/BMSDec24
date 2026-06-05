@@ -1,6 +1,7 @@
 package org.example.bmsdec24.controllers.api;
 
 import org.example.bmsdec24.dtos.BookSeatsRequestDto;
+import org.example.bmsdec24.dtos.BookShowSeatsRequestDto;
 import org.example.bmsdec24.dtos.BookingResponseDto;
 import org.example.bmsdec24.exceptions.InvalidBookingException;
 import org.example.bmsdec24.exceptions.InvalidRequestException;
@@ -44,6 +45,15 @@ public class BookingRestController {
                 requestDto.getSeatIds())));
     }
 
+    @PostMapping("/book-show-seats")
+    public ResponseEntity<BookingResponseDto> bookShowSeats(@RequestBody BookShowSeatsRequestDto requestDto)
+            throws InvalidUserException, SeatsNotAvailableException, InvalidRequestException {
+        validateBookShowSeatsRequest(requestDto);
+        return ResponseEntity.ok(BookingResponseDto.from(bookingService.bookShowSeats(
+                requestDto.getUserId(),
+                requestDto.getShowSeatIds())));
+    }
+
     @PostMapping("/{bookingId}/confirm")
     public ResponseEntity<BookingResponseDto> confirmBooking(@PathVariable int bookingId)
             throws Exception {
@@ -79,6 +89,18 @@ public class BookingRestController {
         }
         if (requestDto.getSeatIds() == null || requestDto.getSeatIds().isEmpty()) {
             throw new InvalidRequestException("seatIds must contain at least one seat id");
+        }
+    }
+
+    private void validateBookShowSeatsRequest(BookShowSeatsRequestDto requestDto) throws InvalidRequestException {
+        if (requestDto == null) {
+            throw new InvalidRequestException("Request body is required with userId and showSeatIds");
+        }
+        if (requestDto.getUserId() <= 0) {
+            throw new InvalidRequestException("userId must be a positive integer");
+        }
+        if (requestDto.getShowSeatIds() == null || requestDto.getShowSeatIds().isEmpty()) {
+            throw new InvalidRequestException("showSeatIds must contain at least one show seat id");
         }
     }
 }
