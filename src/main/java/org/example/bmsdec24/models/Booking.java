@@ -29,6 +29,10 @@ public class Booking extends BaseModel {
     @JoinColumn(name = "theatre_id")
     private Theatre theatre;
 
+    @ManyToOne
+    @JoinColumn(name = "show_id")
+    private Show show;
+
     @ManyToMany
     @JoinTable(
             name = "booking_seats",
@@ -75,6 +79,14 @@ public class Booking extends BaseModel {
 
     public void setTheatre(Theatre theatre) {
         this.theatre = theatre;
+    }
+
+    public Show getShow() {
+        return show;
+    }
+
+    public void setShow(Show show) {
+        this.show = show;
     }
 
     public List<Seat> getSeats() {

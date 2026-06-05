@@ -195,6 +195,113 @@ const catalogFolder = folder('Catalog', 'Public discovery APIs (no JWT required)
   ])
 ]);
 
+const showsFolder = folder('Shows (Real-time)', 'Public show discovery and live seat availability polling (no JWT required). H2 seed: Show 1 Orion Action Blast (showSeats 1-2 AVAILABLE), Show 2 Orion RomCom (showSeat 3 AVAILABLE, 4 BLOCKED), Show 3 Phoenix Action Blast (showSeats 5-6 AVAILABLE).', [
+  folder('Happy path', 'Browse showtimes and poll seat map.', [
+    item('GET /api/shows/theatres/1 - list shows at Orion PVR',
+      req('GET', '/api/shows/theatres/1', { auth: 'noauth', description: 'List all showtimes at theatre 1.' }),
+      testStatus(200, 'Status is 200').concat([
+        "pm.test('Returns show array', function () {",
+        "    const shows = pm.response.json();",
+        "    pm.expect(shows).to.be.an('array').that.is.not.empty;",
+        "    pm.expect(shows[0]).to.have.property('movieTitle');",
+        "    pm.expect(shows[0]).to.have.property('startTime');",
+        "});"
+      ])
+    ),
+    item('GET /api/shows/theatres/2 - list shows at PVR Phoenix',
+      req('GET', '/api/shows/theatres/2', { auth: 'noauth' }),
+      testStatus(200, 'Status is 200').concat([
+        "pm.test('Returns show array', function () { pm.expect(pm.response.json()).to.be.an('array').that.is.not.empty; });"
+      ])
+    ),
+    item('GET /api/shows/movies/1 - list shows for Action Blast',
+      req('GET', '/api/shows/movies/1', { auth: 'noauth' }),
+      testStatus(200, 'Status is 200').concat([
+        "pm.test('Returns show array', function () { pm.expect(pm.response.json().length).to.be.above(0); });"
+      ])
+    ),
+    item('GET /api/shows/movies/2 - list shows for RomCom Nights',
+      req('GET', '/api/shows/movies/2', { auth: 'noauth' }),
+      testStatus(200, 'Status is 200')
+    ),
+    item('GET /api/shows/1/availability - full seat snapshot (stores serverTimeEpochMs)',
+      req('GET', '/api/shows/1/availability', { auth: 'noauth', description: 'Full seat map with AVAILABLE/BLOCKED/BOOKED counts.' }),
+      testStatus(200, 'Status is 200').concat([
+        "const json = pm.response.json();",
+        "pm.test('Has seat counts', function () {",
+        "    pm.expect(json).to.have.property('availableSeats');",
+        "    pm.expect(json).to.have.property('blockedSeats');",
+        "    pm.expect(json).to.have.property('bookedSeats');",
+        "    pm.expect(json.totalSeats).to.eql(json.availableSeats + json.blockedSeats + json.bookedSeats);",
+        "});",
+        "pm.test('Seats array with live status', function () {",
+        "    pm.expect(json.seats).to.be.an('array').that.is.not.empty;",
+        "    pm.expect(json.seats[0]).to.have.property('showSeatId');",
+        "    pm.expect(json.seats[0]).to.have.property('seatStatus');",
+        "    pm.expect(json.seats[0]).to.have.property('updatedAtEpochMs');",
+        "});",
+        "pm.collectionVariables.set('lastServerTimeEpochMs', json.serverTimeEpochMs);"
+      ])
+    ),
+    item('GET /api/shows/1/availability?changedAfterEpochMs={{lastServerTimeEpochMs}} - delta poll',
+      req('GET', '/api/shows/1/availability?changedAfterEpochMs={{lastServerTimeEpochMs}}', {
+        auth: 'noauth',
+        description: 'Returns only seats changed since last poll. Empty seats array if nothing changed.'
+      }),
+      testStatus(200, 'Status is 200').concat([
+        "pm.test('Delta response shape', function () {",
+        "    const json = pm.response.json();",
+        "    pm.expect(json.showId).to.eql(1);",
+        "    pm.expect(json.seats).to.be.an('array');",
+        "    pm.expect(json.serverTimeEpochMs).to.be.a('number');",
+        "});"
+      ])
+    ),
+    item('GET /api/shows/2/availability - show with BLOCKED seat in seed',
+      req('GET', '/api/shows/2/availability', { auth: 'noauth' }),
+      testStatus(200, 'Status is 200').concat([
+        "pm.test('Has at least one BLOCKED seat', function () {",
+        "    pm.expect(pm.response.json().blockedSeats).to.be.at.least(1);",
+        "});"
+      ])
+    )
+  ]),
+  folder('Edge cases', 'Invalid IDs and public access.', [
+    item('GET /api/shows/theatres/0 (400)',
+      req('GET', '/api/shows/theatres/0', { auth: 'noauth' }),
+      testStatus(400, 'Status is 400 Bad Request')
+    ),
+    item('GET /api/shows/theatres/99999 (404)',
+      req('GET', '/api/shows/theatres/99999', { auth: 'noauth' }),
+      testStatus(404, 'Status is 404 Not Found')
+    ),
+    item('GET /api/shows/movies/0 (400)',
+      req('GET', '/api/shows/movies/0', { auth: 'noauth' }),
+      testStatus(400, 'Status is 400 Bad Request')
+    ),
+    item('GET /api/shows/movies/99999 (404)',
+      req('GET', '/api/shows/movies/99999', { auth: 'noauth' }),
+      testStatus(404, 'Status is 404 Not Found')
+    ),
+    item('GET /api/shows/0/availability (400)',
+      req('GET', '/api/shows/0/availability', { auth: 'noauth' }),
+      testStatus(400, 'Status is 400 Bad Request')
+    ),
+    item('GET /api/shows/99999/availability (404)',
+      req('GET', '/api/shows/99999/availability', { auth: 'noauth' }),
+      testStatus(404, 'Status is 404 Not Found')
+    ),
+    item('GET /api/shows/1/availability - works without JWT (public)',
+      req('GET', '/api/shows/1/availability', { auth: 'noauth' }),
+      testStatus(200, 'Status is 200')
+    ),
+    item('GET /api/shows/1/availability - works with invalid JWT (still public)',
+      req('GET', '/api/shows/1/availability', { auth: 'noauth', authHeader: 'Bearer not.a.jwt' }),
+      testStatus(200, 'Status is 200')
+    )
+  ])
+]);
+
 const usersFolder = folder('Users', 'Registration (public).', [
   folder('Happy path', '', [
     item('POST /api/users/signup - success (unique email)',
@@ -591,6 +698,130 @@ const bookingsFolder = folder('Bookings', 'Seat holds and lifecycle. Run Auth lo
       req('POST', '/api/bookings/{{seedConfirmedBookingId}}/confirm'),
       testStatus(409, 'Status is 409 Conflict')
     )
+  ]),
+  folder('Real-time show seats', 'Book via showSeatIds (per-showtime inventory). Uses Phoenix show 3 / showSeats 5-6 to avoid theatre-1 seat conflicts.', [
+    folder('Happy path', '', [
+      item('POST /api/bookings/book-show-seats - success (stores showBookingId)',
+        req('POST', '/api/bookings/book-show-seats', {
+          body: '{\n  "userId": {{bookingUserId}},\n  "showSeatIds": {{availableShowSeatIds}}\n}',
+          description: 'Hold seats for a specific showtime. Syncs ShowSeat + theatre Seat status.'
+        }),
+        [
+          "pm.test('Status is 200 OK', function () { pm.response.to.have.status(200); });",
+          "const json = pm.response.json();",
+          "pm.test('Status is PENDING', function () { pm.expect(json.status).to.eql('PENDING'); });",
+          "pm.test('Show attached to booking', function () { pm.expect(json.show).to.exist; pm.expect(json.show.id).to.eql(Number(pm.collectionVariables.get('validShowId'))); });",
+          "pm.test('holdExpiresAt set', function () { pm.expect(json.holdExpiresAt).to.exist; });",
+          "pm.collectionVariables.set('showBookingId', json.id);"
+        ],
+        prerequestBookingUser
+      ),
+      item('GET /api/bookings/{{showBookingId}} - fetch show booking',
+        req('GET', '/api/bookings/{{showBookingId}}'),
+        [
+          "pm.test('Status is 200 OK', function () { pm.response.to.have.status(200); });",
+          "pm.test('Has show details', function () { pm.expect(pm.response.json().show).to.exist; });"
+        ]
+      ),
+      item('POST /api/bookings/{{showBookingId}}/confirm - success',
+        req('POST', '/api/bookings/{{showBookingId}}/confirm'),
+        [
+          "pm.test('Status is 200 OK', function () { pm.response.to.have.status(200); });",
+          "pm.test('Status is CONFIRMED', function () { pm.expect(pm.response.json().status).to.eql('CONFIRMED'); });"
+        ]
+      ),
+      item('Setup: book show seats for cancel flow (stores showBookingIdCancel)',
+        req('POST', '/api/bookings/book-show-seats', {
+          body: '{\n  "userId": {{bookingUserId}},\n  "showSeatIds": {{show2AvailableShowSeatIds}}\n}'
+        }),
+        [
+          "pm.test('Status is 200 OK', function () { pm.response.to.have.status(200); });",
+          "pm.collectionVariables.set('showBookingIdCancel', pm.response.json().id);"
+        ],
+        prerequestBookingUser
+      ),
+      item('POST /api/bookings/{{showBookingIdCancel}}/cancel - success',
+        req('POST', '/api/bookings/{{showBookingIdCancel}}/cancel'),
+        [
+          "pm.test('Status is 200 OK', function () { pm.response.to.have.status(200); });",
+          "pm.test('Status is CANCELLED', function () { pm.expect(pm.response.json().status).to.eql('CANCELLED'); });"
+        ]
+      ),
+      item('GET /api/shows/2/availability - verify cancelled seat released',
+        req('GET', '/api/shows/2/availability', { auth: 'noauth' }),
+        testStatus(200, 'Status is 200').concat([
+          "pm.test('Show seat 3 is AVAILABLE again', function () {",
+          "    const seat = pm.response.json().seats.find(s => s.showSeatId === 3);",
+          "    pm.expect(seat).to.exist;",
+          "    pm.expect(seat.seatStatus).to.eql('AVAILABLE');",
+          "});"
+        ])
+      )
+    ]),
+    folder('Edge cases - validation', 'Bad request bodies for show-seat booking.', [
+      item('POST /api/bookings/book-show-seats - null body (400)',
+        req('POST', '/api/bookings/book-show-seats'),
+        testStatus(400, 'Status is 400 Bad Request')
+      ),
+      item('POST /api/bookings/book-show-seats - empty body (400)',
+        req('POST', '/api/bookings/book-show-seats', { body: '{}' }),
+        testStatus(400, 'Status is 400 Bad Request')
+      ),
+      item('POST /api/bookings/book-show-seats - userId zero (400)',
+        req('POST', '/api/bookings/book-show-seats', {
+          body: '{\n  "userId": 0,\n  "showSeatIds": {{availableShowSeatIds}}\n}'
+        }),
+        testStatus(400, 'Status is 400 Bad Request')
+      ),
+      item('POST /api/bookings/book-show-seats - empty showSeatIds (400)',
+        req('POST', '/api/bookings/book-show-seats', {
+          body: '{\n  "userId": {{validUserId}},\n  "showSeatIds": []\n}'
+        }),
+        testStatus(400, 'Status is 400 Bad Request')
+      ),
+      item('POST /api/bookings/book-show-seats - missing showSeatIds field (400)',
+        req('POST', '/api/bookings/book-show-seats', {
+          body: '{\n  "userId": {{validUserId}}\n}'
+        }),
+        testStatus(400, 'Status is 400 Bad Request')
+      )
+    ]),
+    folder('Edge cases - business rules', 'Show-seat conflicts (requires seed data).', [
+      item('POST /api/bookings/book-show-seats - invalid userId (404)',
+        req('POST', '/api/bookings/book-show-seats', {
+          body: '{\n  "userId": {{invalidUserId}},\n  "showSeatIds": {{availableShowSeatIds}}\n}'
+        }),
+        testStatus(404, 'Status is 404 Not Found')
+      ),
+      item('POST /api/bookings/book-show-seats - duplicate showSeatIds (409)',
+        req('POST', '/api/bookings/book-show-seats', {
+          body: '{\n  "userId": {{validUserId}},\n  "showSeatIds": {{duplicateShowSeatIds}}\n}'
+        }),
+        testStatus(409, 'Status is 409 Conflict')
+      ),
+      item('POST /api/bookings/book-show-seats - showSeats from different shows (409)',
+        req('POST', '/api/bookings/book-show-seats', {
+          body: '{\n  "userId": {{validUserId}},\n  "showSeatIds": {{mixedShowShowSeatIds}}\n}'
+        }),
+        testStatus(409, 'Status is 409 Conflict')
+      ),
+      item('POST /api/bookings/book-show-seats - showSeat BLOCKED in seed (409)',
+        req('POST', '/api/bookings/book-show-seats', {
+          body: '{\n  "userId": {{validUserId}},\n  "showSeatIds": {{blockedShowSeatIds}}\n}'
+        }),
+        testStatus(409, 'Status is 409 Conflict')
+      ),
+      item('POST /api/bookings/book-show-seats - non-existent showSeat (409)',
+        req('POST', '/api/bookings/book-show-seats', {
+          body: '{\n  "userId": {{validUserId}},\n  "showSeatIds": [999999]\n}'
+        }),
+        testStatus(409, 'Status is 409 Conflict')
+      ),
+      item('POST /api/bookings/{{showBookingId}}/confirm - already confirmed (409)',
+        req('POST', '/api/bookings/{{showBookingId}}/confirm'),
+        testStatus(409, 'Status is 409 Conflict')
+      )
+    ])
   ])
 ]);
 
@@ -911,6 +1142,13 @@ const paymentsFolder = folder('Payments', 'Strategy (STRIPE | RAZORPAY) + mock a
 ]);
 
 const securityFolder = folder('Security Edge Cases', 'Protected endpoints must reject missing, malformed, or wrong-type JWT.', [
+  item('POST /api/bookings/book-show-seats - missing token (401)',
+    req('POST', '/api/bookings/book-show-seats', {
+      auth: 'noauth',
+      body: '{\n  "userId": {{validUserId}},\n  "showSeatIds": [1]\n}'
+    }),
+    testStatus(401, 'Status is 401 Unauthorized')
+  ),
   item('POST /api/bookings/book - missing token (401)',
     req('POST', '/api/bookings/book', {
       auth: 'noauth',
@@ -978,13 +1216,20 @@ const collection = {
 **Runner order (recommended):**
 1. Health
 2. Catalog (public — happy path then edge cases)
-3. Users → Signup success → Users edge cases
-4. Auth → Login seed user (or signup + login) → Auth edge cases
-5. Bookings → Edge cases validation → Edge cases business rules → Happy path
-6. Payments → Edge cases validation → Edge cases business rules → Happy path (run in this order; seats 6–9 used in business rules first)
-7. Security Edge Cases
+3. Shows (Real-time) — public showtimes + availability polling
+4. Users → Signup success → Users edge cases
+5. Auth → Login seed user (or signup + login) → Auth edge cases
+6. Bookings → Edge cases validation → Edge cases business rules → Happy path → Real-time show seats (edge cases then happy path)
+7. Payments → Edge cases validation → Edge cases business rules → Happy path (run in this order; seats 6–9 used in business rules first)
+8. Security Edge Cases
 
 **Prerequisites:** MySQL — run \`db/seed_bmsdec24.sql\` after first start. H2 profile — demo data loads automatically.
+
+**Real-time shows (H2 seed):**
+- Show 1 @ Orion — Action Blast — showSeats 1-2 AVAILABLE
+- Show 2 @ Orion — RomCom — showSeat 3 AVAILABLE, 4 BLOCKED
+- Show 3 @ Phoenix — Action Blast — showSeats 5-6 AVAILABLE
+- Poll: \`GET /api/shows/{showId}/availability?changedAfterEpochMs={serverTime}\`
 
 **Payments (mock — \`bms.payment.mock-enabled=true\`):**
 - Stripe success: \`signature\` starts with \`whsec_\`
@@ -1000,6 +1245,7 @@ const collection = {
   item: [
     healthFolder,
     catalogFolder,
+    showsFolder,
     usersFolder,
     authFolder,
     bookingsFolder,
@@ -1026,6 +1272,15 @@ const collection = {
     { key: 'blockedSeatIds', value: '[5]', type: 'string' },
     { key: 'mixedTheatreSeatIds', value: '[1, 6]', type: 'string' },
     { key: 'duplicateSeatIds', value: '[1, 1]', type: 'string' },
+    { key: 'validShowId', value: '3', type: 'string' },
+    { key: 'availableShowSeatIds', value: '[5, 6]', type: 'string' },
+    { key: 'show2AvailableShowSeatIds', value: '[3]', type: 'string' },
+    { key: 'blockedShowSeatIds', value: '[4]', type: 'string' },
+    { key: 'mixedShowShowSeatIds', value: '[1, 5]', type: 'string' },
+    { key: 'duplicateShowSeatIds', value: '[5, 5]', type: 'string' },
+    { key: 'lastServerTimeEpochMs', value: '0', type: 'string' },
+    { key: 'showBookingId', value: '', type: 'string' },
+    { key: 'showBookingIdCancel', value: '', type: 'string' },
     { key: 'seedConfirmedBookingId', value: '1', type: 'string' },
     { key: 'bookingId', value: '', type: 'string' },
     { key: 'bookingIdPay', value: '', type: 'string' },

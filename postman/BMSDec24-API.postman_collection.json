@@ -2,7 +2,7 @@
   "info": {
     "name": "BMSDec24 API - Full Scenarios",
     "_postman_id": "c5b7f498-52ab-4b85-a5bc-b2f42ce6f5f2",
-    "description": "End-to-end and edge-case coverage for the BMSDec24 API.\n\n**Runner order (recommended):**\n1. Health\n2. Catalog (public — happy path then edge cases)\n3. Users → Signup success → Users edge cases\n4. Auth → Login seed user (or signup + login) → Auth edge cases\n5. Bookings → Edge cases validation → Edge cases business rules → Happy path\n6. Payments → Edge cases validation → Edge cases business rules → Happy path (run in this order; seats 6–9 used in business rules first)\n7. Security Edge Cases\n\n**Prerequisites:** MySQL — run `db/seed_bmsdec24.sql` after first start. H2 profile — demo data loads automatically.\n\n**Payments (mock — `bms.payment.mock-enabled=true`):**\n- Stripe success: `signature` starts with `whsec_`\n- Razorpay success: `signature` starts with `rzp_sig_`\n\n**Seed reference:** Theatre 1 movies 1,2 — seats 1-2 AVAILABLE, 3-4 BOOKED, 5 BLOCKED. Theatre 2 movies 1,3 — seats 6-9 AVAILABLE. Seed users: john.seed@example.com / Password@123",
+    "description": "End-to-end and edge-case coverage for the BMSDec24 API.\n\n**Runner order (recommended):**\n1. Health\n2. Catalog (public — happy path then edge cases)\n3. Shows (Real-time) — public showtimes + availability polling\n4. Users → Signup success → Users edge cases\n5. Auth → Login seed user (or signup + login) → Auth edge cases\n6. Bookings → Edge cases validation → Edge cases business rules → Happy path → Real-time show seats (edge cases then happy path)\n7. Payments → Edge cases validation → Edge cases business rules → Happy path (run in this order; seats 6–9 used in business rules first)\n8. Security Edge Cases\n\n**Prerequisites:** MySQL — run `db/seed_bmsdec24.sql` after first start. H2 profile — demo data loads automatically.\n\n**Real-time shows (H2 seed):**\n- Show 1 @ Orion — Action Blast — showSeats 1-2 AVAILABLE\n- Show 2 @ Orion — RomCom — showSeat 3 AVAILABLE, 4 BLOCKED\n- Show 3 @ Phoenix — Action Blast — showSeats 5-6 AVAILABLE\n- Poll: `GET /api/shows/{showId}/availability?changedAfterEpochMs={serverTime}`\n\n**Payments (mock — `bms.payment.mock-enabled=true`):**\n- Stripe success: `signature` starts with `whsec_`\n- Razorpay success: `signature` starts with `rzp_sig_`\n\n**Seed reference:** Theatre 1 movies 1,2 — seats 1-2 AVAILABLE, 3-4 BOOKED, 5 BLOCKED. Theatre 2 movies 1,3 — seats 6-9 AVAILABLE. Seed users: john.seed@example.com / Password@123",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "auth": {
@@ -804,6 +804,615 @@
         }
       ],
       "description": "Public discovery APIs (no JWT required)."
+    },
+    {
+      "name": "Shows (Real-time)",
+      "item": [
+        {
+          "name": "Happy path",
+          "item": [
+            {
+              "name": "GET /api/shows/theatres/1 - list shows at Orion PVR",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('Status is 200', function () {",
+                      "    pm.response.to.have.status(200);",
+                      "});",
+                      "pm.test('Returns show array', function () {",
+                      "    const shows = pm.response.json();",
+                      "    pm.expect(shows).to.be.an('array').that.is.not.empty;",
+                      "    pm.expect(shows[0]).to.have.property('movieTitle');",
+                      "    pm.expect(shows[0]).to.have.property('startTime');",
+                      "});"
+                    ]
+                  }
+                }
+              ],
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/api/shows/theatres/1",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "shows",
+                    "theatres",
+                    "1"
+                  ]
+                },
+                "description": "List all showtimes at theatre 1.",
+                "auth": {
+                  "type": "noauth"
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "GET /api/shows/theatres/2 - list shows at PVR Phoenix",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('Status is 200', function () {",
+                      "    pm.response.to.have.status(200);",
+                      "});",
+                      "pm.test('Returns show array', function () { pm.expect(pm.response.json()).to.be.an('array').that.is.not.empty; });"
+                    ]
+                  }
+                }
+              ],
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/api/shows/theatres/2",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "shows",
+                    "theatres",
+                    "2"
+                  ]
+                },
+                "description": "",
+                "auth": {
+                  "type": "noauth"
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "GET /api/shows/movies/1 - list shows for Action Blast",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('Status is 200', function () {",
+                      "    pm.response.to.have.status(200);",
+                      "});",
+                      "pm.test('Returns show array', function () { pm.expect(pm.response.json().length).to.be.above(0); });"
+                    ]
+                  }
+                }
+              ],
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/api/shows/movies/1",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "shows",
+                    "movies",
+                    "1"
+                  ]
+                },
+                "description": "",
+                "auth": {
+                  "type": "noauth"
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "GET /api/shows/movies/2 - list shows for RomCom Nights",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('Status is 200', function () {",
+                      "    pm.response.to.have.status(200);",
+                      "});"
+                    ]
+                  }
+                }
+              ],
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/api/shows/movies/2",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "shows",
+                    "movies",
+                    "2"
+                  ]
+                },
+                "description": "",
+                "auth": {
+                  "type": "noauth"
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "GET /api/shows/1/availability - full seat snapshot (stores serverTimeEpochMs)",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('Status is 200', function () {",
+                      "    pm.response.to.have.status(200);",
+                      "});",
+                      "const json = pm.response.json();",
+                      "pm.test('Has seat counts', function () {",
+                      "    pm.expect(json).to.have.property('availableSeats');",
+                      "    pm.expect(json).to.have.property('blockedSeats');",
+                      "    pm.expect(json).to.have.property('bookedSeats');",
+                      "    pm.expect(json.totalSeats).to.eql(json.availableSeats + json.blockedSeats + json.bookedSeats);",
+                      "});",
+                      "pm.test('Seats array with live status', function () {",
+                      "    pm.expect(json.seats).to.be.an('array').that.is.not.empty;",
+                      "    pm.expect(json.seats[0]).to.have.property('showSeatId');",
+                      "    pm.expect(json.seats[0]).to.have.property('seatStatus');",
+                      "    pm.expect(json.seats[0]).to.have.property('updatedAtEpochMs');",
+                      "});",
+                      "pm.collectionVariables.set('lastServerTimeEpochMs', json.serverTimeEpochMs);"
+                    ]
+                  }
+                }
+              ],
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/api/shows/1/availability",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "shows",
+                    "1",
+                    "availability"
+                  ]
+                },
+                "description": "Full seat map with AVAILABLE/BLOCKED/BOOKED counts.",
+                "auth": {
+                  "type": "noauth"
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "GET /api/shows/1/availability?changedAfterEpochMs={{lastServerTimeEpochMs}} - delta poll",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('Status is 200', function () {",
+                      "    pm.response.to.have.status(200);",
+                      "});",
+                      "pm.test('Delta response shape', function () {",
+                      "    const json = pm.response.json();",
+                      "    pm.expect(json.showId).to.eql(1);",
+                      "    pm.expect(json.seats).to.be.an('array');",
+                      "    pm.expect(json.serverTimeEpochMs).to.be.a('number');",
+                      "});"
+                    ]
+                  }
+                }
+              ],
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/api/shows/1/availability?changedAfterEpochMs={{lastServerTimeEpochMs}}",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "shows",
+                    "1",
+                    "availability?changedAfterEpochMs={{lastServerTimeEpochMs}}"
+                  ]
+                },
+                "description": "Returns only seats changed since last poll. Empty seats array if nothing changed.",
+                "auth": {
+                  "type": "noauth"
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "GET /api/shows/2/availability - show with BLOCKED seat in seed",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('Status is 200', function () {",
+                      "    pm.response.to.have.status(200);",
+                      "});",
+                      "pm.test('Has at least one BLOCKED seat', function () {",
+                      "    pm.expect(pm.response.json().blockedSeats).to.be.at.least(1);",
+                      "});"
+                    ]
+                  }
+                }
+              ],
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/api/shows/2/availability",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "shows",
+                    "2",
+                    "availability"
+                  ]
+                },
+                "description": "",
+                "auth": {
+                  "type": "noauth"
+                }
+              },
+              "response": []
+            }
+          ],
+          "description": "Browse showtimes and poll seat map."
+        },
+        {
+          "name": "Edge cases",
+          "item": [
+            {
+              "name": "GET /api/shows/theatres/0 (400)",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('Status is 400 Bad Request', function () {",
+                      "    pm.response.to.have.status(400);",
+                      "});"
+                    ]
+                  }
+                }
+              ],
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/api/shows/theatres/0",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "shows",
+                    "theatres",
+                    "0"
+                  ]
+                },
+                "description": "",
+                "auth": {
+                  "type": "noauth"
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "GET /api/shows/theatres/99999 (404)",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('Status is 404 Not Found', function () {",
+                      "    pm.response.to.have.status(404);",
+                      "});"
+                    ]
+                  }
+                }
+              ],
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/api/shows/theatres/99999",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "shows",
+                    "theatres",
+                    "99999"
+                  ]
+                },
+                "description": "",
+                "auth": {
+                  "type": "noauth"
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "GET /api/shows/movies/0 (400)",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('Status is 400 Bad Request', function () {",
+                      "    pm.response.to.have.status(400);",
+                      "});"
+                    ]
+                  }
+                }
+              ],
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/api/shows/movies/0",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "shows",
+                    "movies",
+                    "0"
+                  ]
+                },
+                "description": "",
+                "auth": {
+                  "type": "noauth"
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "GET /api/shows/movies/99999 (404)",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('Status is 404 Not Found', function () {",
+                      "    pm.response.to.have.status(404);",
+                      "});"
+                    ]
+                  }
+                }
+              ],
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/api/shows/movies/99999",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "shows",
+                    "movies",
+                    "99999"
+                  ]
+                },
+                "description": "",
+                "auth": {
+                  "type": "noauth"
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "GET /api/shows/0/availability (400)",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('Status is 400 Bad Request', function () {",
+                      "    pm.response.to.have.status(400);",
+                      "});"
+                    ]
+                  }
+                }
+              ],
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/api/shows/0/availability",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "shows",
+                    "0",
+                    "availability"
+                  ]
+                },
+                "description": "",
+                "auth": {
+                  "type": "noauth"
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "GET /api/shows/99999/availability (404)",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('Status is 404 Not Found', function () {",
+                      "    pm.response.to.have.status(404);",
+                      "});"
+                    ]
+                  }
+                }
+              ],
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/api/shows/99999/availability",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "shows",
+                    "99999",
+                    "availability"
+                  ]
+                },
+                "description": "",
+                "auth": {
+                  "type": "noauth"
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "GET /api/shows/1/availability - works without JWT (public)",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('Status is 200', function () {",
+                      "    pm.response.to.have.status(200);",
+                      "});"
+                    ]
+                  }
+                }
+              ],
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/api/shows/1/availability",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "shows",
+                    "1",
+                    "availability"
+                  ]
+                },
+                "description": "",
+                "auth": {
+                  "type": "noauth"
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "GET /api/shows/1/availability - works with invalid JWT (still public)",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('Status is 200', function () {",
+                      "    pm.response.to.have.status(200);",
+                      "});"
+                    ]
+                  }
+                }
+              ],
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer not.a.jwt"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/shows/1/availability",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "shows",
+                    "1",
+                    "availability"
+                  ]
+                },
+                "description": "",
+                "auth": {
+                  "type": "noauth"
+                }
+              },
+              "response": []
+            }
+          ],
+          "description": "Invalid IDs and public access."
+        }
+      ],
+      "description": "Public show discovery and live seat availability polling (no JWT required). H2 seed: Show 1 Orion Action Blast (showSeats 1-2 AVAILABLE), Show 2 Orion RomCom (showSeat 3 AVAILABLE, 4 BLOCKED), Show 3 Phoenix Action Blast (showSeats 5-6 AVAILABLE)."
     },
     {
       "name": "Users",
@@ -3374,6 +3983,720 @@
             }
           ],
           "description": "Seat conflicts and booking state (requires seed data)."
+        },
+        {
+          "name": "Real-time show seats",
+          "item": [
+            {
+              "name": "Happy path",
+              "item": [
+                {
+                  "name": "POST /api/bookings/book-show-seats - success (stores showBookingId)",
+                  "event": [
+                    {
+                      "listen": "prerequest",
+                      "script": {
+                        "type": "text/javascript",
+                        "exec": [
+                          "const u = pm.collectionVariables.get('signedUpUserId') || pm.collectionVariables.get('validUserId');",
+                          "pm.variables.set('bookingUserId', u);"
+                        ]
+                      }
+                    },
+                    {
+                      "listen": "test",
+                      "script": {
+                        "type": "text/javascript",
+                        "exec": [
+                          "pm.test('Status is 200 OK', function () { pm.response.to.have.status(200); });",
+                          "const json = pm.response.json();",
+                          "pm.test('Status is PENDING', function () { pm.expect(json.status).to.eql('PENDING'); });",
+                          "pm.test('Show attached to booking', function () { pm.expect(json.show).to.exist; pm.expect(json.show.id).to.eql(Number(pm.collectionVariables.get('validShowId'))); });",
+                          "pm.test('holdExpiresAt set', function () { pm.expect(json.holdExpiresAt).to.exist; });",
+                          "pm.collectionVariables.set('showBookingId', json.id);"
+                        ]
+                      }
+                    }
+                  ],
+                  "request": {
+                    "method": "POST",
+                    "header": [
+                      {
+                        "key": "Content-Type",
+                        "value": "application/json"
+                      }
+                    ],
+                    "url": {
+                      "raw": "{{baseUrl}}/api/bookings/book-show-seats",
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
+                      "path": [
+                        "api",
+                        "bookings",
+                        "book-show-seats"
+                      ]
+                    },
+                    "description": "Hold seats for a specific showtime. Syncs ShowSeat + theatre Seat status.",
+                    "body": {
+                      "mode": "raw",
+                      "raw": "{\n  \"userId\": {{bookingUserId}},\n  \"showSeatIds\": {{availableShowSeatIds}}\n}"
+                    }
+                  },
+                  "response": []
+                },
+                {
+                  "name": "GET /api/bookings/{{showBookingId}} - fetch show booking",
+                  "event": [
+                    {
+                      "listen": "test",
+                      "script": {
+                        "type": "text/javascript",
+                        "exec": [
+                          "pm.test('Status is 200 OK', function () { pm.response.to.have.status(200); });",
+                          "pm.test('Has show details', function () { pm.expect(pm.response.json().show).to.exist; });"
+                        ]
+                      }
+                    }
+                  ],
+                  "request": {
+                    "method": "GET",
+                    "header": [],
+                    "url": {
+                      "raw": "{{baseUrl}}/api/bookings/{{showBookingId}}",
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
+                      "path": [
+                        "api",
+                        "bookings",
+                        "{{showBookingId}}"
+                      ]
+                    },
+                    "description": ""
+                  },
+                  "response": []
+                },
+                {
+                  "name": "POST /api/bookings/{{showBookingId}}/confirm - success",
+                  "event": [
+                    {
+                      "listen": "test",
+                      "script": {
+                        "type": "text/javascript",
+                        "exec": [
+                          "pm.test('Status is 200 OK', function () { pm.response.to.have.status(200); });",
+                          "pm.test('Status is CONFIRMED', function () { pm.expect(pm.response.json().status).to.eql('CONFIRMED'); });"
+                        ]
+                      }
+                    }
+                  ],
+                  "request": {
+                    "method": "POST",
+                    "header": [],
+                    "url": {
+                      "raw": "{{baseUrl}}/api/bookings/{{showBookingId}}/confirm",
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
+                      "path": [
+                        "api",
+                        "bookings",
+                        "{{showBookingId}}",
+                        "confirm"
+                      ]
+                    },
+                    "description": ""
+                  },
+                  "response": []
+                },
+                {
+                  "name": "Setup: book show seats for cancel flow (stores showBookingIdCancel)",
+                  "event": [
+                    {
+                      "listen": "prerequest",
+                      "script": {
+                        "type": "text/javascript",
+                        "exec": [
+                          "const u = pm.collectionVariables.get('signedUpUserId') || pm.collectionVariables.get('validUserId');",
+                          "pm.variables.set('bookingUserId', u);"
+                        ]
+                      }
+                    },
+                    {
+                      "listen": "test",
+                      "script": {
+                        "type": "text/javascript",
+                        "exec": [
+                          "pm.test('Status is 200 OK', function () { pm.response.to.have.status(200); });",
+                          "pm.collectionVariables.set('showBookingIdCancel', pm.response.json().id);"
+                        ]
+                      }
+                    }
+                  ],
+                  "request": {
+                    "method": "POST",
+                    "header": [
+                      {
+                        "key": "Content-Type",
+                        "value": "application/json"
+                      }
+                    ],
+                    "url": {
+                      "raw": "{{baseUrl}}/api/bookings/book-show-seats",
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
+                      "path": [
+                        "api",
+                        "bookings",
+                        "book-show-seats"
+                      ]
+                    },
+                    "description": "",
+                    "body": {
+                      "mode": "raw",
+                      "raw": "{\n  \"userId\": {{bookingUserId}},\n  \"showSeatIds\": {{show2AvailableShowSeatIds}}\n}"
+                    }
+                  },
+                  "response": []
+                },
+                {
+                  "name": "POST /api/bookings/{{showBookingIdCancel}}/cancel - success",
+                  "event": [
+                    {
+                      "listen": "test",
+                      "script": {
+                        "type": "text/javascript",
+                        "exec": [
+                          "pm.test('Status is 200 OK', function () { pm.response.to.have.status(200); });",
+                          "pm.test('Status is CANCELLED', function () { pm.expect(pm.response.json().status).to.eql('CANCELLED'); });"
+                        ]
+                      }
+                    }
+                  ],
+                  "request": {
+                    "method": "POST",
+                    "header": [],
+                    "url": {
+                      "raw": "{{baseUrl}}/api/bookings/{{showBookingIdCancel}}/cancel",
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
+                      "path": [
+                        "api",
+                        "bookings",
+                        "{{showBookingIdCancel}}",
+                        "cancel"
+                      ]
+                    },
+                    "description": ""
+                  },
+                  "response": []
+                },
+                {
+                  "name": "GET /api/shows/2/availability - verify cancelled seat released",
+                  "event": [
+                    {
+                      "listen": "test",
+                      "script": {
+                        "type": "text/javascript",
+                        "exec": [
+                          "pm.test('Status is 200', function () {",
+                          "    pm.response.to.have.status(200);",
+                          "});",
+                          "pm.test('Show seat 3 is AVAILABLE again', function () {",
+                          "    const seat = pm.response.json().seats.find(s => s.showSeatId === 3);",
+                          "    pm.expect(seat).to.exist;",
+                          "    pm.expect(seat.seatStatus).to.eql('AVAILABLE');",
+                          "});"
+                        ]
+                      }
+                    }
+                  ],
+                  "request": {
+                    "method": "GET",
+                    "header": [],
+                    "url": {
+                      "raw": "{{baseUrl}}/api/shows/2/availability",
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
+                      "path": [
+                        "api",
+                        "shows",
+                        "2",
+                        "availability"
+                      ]
+                    },
+                    "description": "",
+                    "auth": {
+                      "type": "noauth"
+                    }
+                  },
+                  "response": []
+                }
+              ]
+            },
+            {
+              "name": "Edge cases - validation",
+              "item": [
+                {
+                  "name": "POST /api/bookings/book-show-seats - null body (400)",
+                  "event": [
+                    {
+                      "listen": "test",
+                      "script": {
+                        "type": "text/javascript",
+                        "exec": [
+                          "pm.test('Status is 400 Bad Request', function () {",
+                          "    pm.response.to.have.status(400);",
+                          "});"
+                        ]
+                      }
+                    }
+                  ],
+                  "request": {
+                    "method": "POST",
+                    "header": [],
+                    "url": {
+                      "raw": "{{baseUrl}}/api/bookings/book-show-seats",
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
+                      "path": [
+                        "api",
+                        "bookings",
+                        "book-show-seats"
+                      ]
+                    },
+                    "description": ""
+                  },
+                  "response": []
+                },
+                {
+                  "name": "POST /api/bookings/book-show-seats - empty body (400)",
+                  "event": [
+                    {
+                      "listen": "test",
+                      "script": {
+                        "type": "text/javascript",
+                        "exec": [
+                          "pm.test('Status is 400 Bad Request', function () {",
+                          "    pm.response.to.have.status(400);",
+                          "});"
+                        ]
+                      }
+                    }
+                  ],
+                  "request": {
+                    "method": "POST",
+                    "header": [
+                      {
+                        "key": "Content-Type",
+                        "value": "application/json"
+                      }
+                    ],
+                    "url": {
+                      "raw": "{{baseUrl}}/api/bookings/book-show-seats",
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
+                      "path": [
+                        "api",
+                        "bookings",
+                        "book-show-seats"
+                      ]
+                    },
+                    "description": "",
+                    "body": {
+                      "mode": "raw",
+                      "raw": "{}"
+                    }
+                  },
+                  "response": []
+                },
+                {
+                  "name": "POST /api/bookings/book-show-seats - userId zero (400)",
+                  "event": [
+                    {
+                      "listen": "test",
+                      "script": {
+                        "type": "text/javascript",
+                        "exec": [
+                          "pm.test('Status is 400 Bad Request', function () {",
+                          "    pm.response.to.have.status(400);",
+                          "});"
+                        ]
+                      }
+                    }
+                  ],
+                  "request": {
+                    "method": "POST",
+                    "header": [
+                      {
+                        "key": "Content-Type",
+                        "value": "application/json"
+                      }
+                    ],
+                    "url": {
+                      "raw": "{{baseUrl}}/api/bookings/book-show-seats",
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
+                      "path": [
+                        "api",
+                        "bookings",
+                        "book-show-seats"
+                      ]
+                    },
+                    "description": "",
+                    "body": {
+                      "mode": "raw",
+                      "raw": "{\n  \"userId\": 0,\n  \"showSeatIds\": {{availableShowSeatIds}}\n}"
+                    }
+                  },
+                  "response": []
+                },
+                {
+                  "name": "POST /api/bookings/book-show-seats - empty showSeatIds (400)",
+                  "event": [
+                    {
+                      "listen": "test",
+                      "script": {
+                        "type": "text/javascript",
+                        "exec": [
+                          "pm.test('Status is 400 Bad Request', function () {",
+                          "    pm.response.to.have.status(400);",
+                          "});"
+                        ]
+                      }
+                    }
+                  ],
+                  "request": {
+                    "method": "POST",
+                    "header": [
+                      {
+                        "key": "Content-Type",
+                        "value": "application/json"
+                      }
+                    ],
+                    "url": {
+                      "raw": "{{baseUrl}}/api/bookings/book-show-seats",
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
+                      "path": [
+                        "api",
+                        "bookings",
+                        "book-show-seats"
+                      ]
+                    },
+                    "description": "",
+                    "body": {
+                      "mode": "raw",
+                      "raw": "{\n  \"userId\": {{validUserId}},\n  \"showSeatIds\": []\n}"
+                    }
+                  },
+                  "response": []
+                },
+                {
+                  "name": "POST /api/bookings/book-show-seats - missing showSeatIds field (400)",
+                  "event": [
+                    {
+                      "listen": "test",
+                      "script": {
+                        "type": "text/javascript",
+                        "exec": [
+                          "pm.test('Status is 400 Bad Request', function () {",
+                          "    pm.response.to.have.status(400);",
+                          "});"
+                        ]
+                      }
+                    }
+                  ],
+                  "request": {
+                    "method": "POST",
+                    "header": [
+                      {
+                        "key": "Content-Type",
+                        "value": "application/json"
+                      }
+                    ],
+                    "url": {
+                      "raw": "{{baseUrl}}/api/bookings/book-show-seats",
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
+                      "path": [
+                        "api",
+                        "bookings",
+                        "book-show-seats"
+                      ]
+                    },
+                    "description": "",
+                    "body": {
+                      "mode": "raw",
+                      "raw": "{\n  \"userId\": {{validUserId}}\n}"
+                    }
+                  },
+                  "response": []
+                }
+              ],
+              "description": "Bad request bodies for show-seat booking."
+            },
+            {
+              "name": "Edge cases - business rules",
+              "item": [
+                {
+                  "name": "POST /api/bookings/book-show-seats - invalid userId (404)",
+                  "event": [
+                    {
+                      "listen": "test",
+                      "script": {
+                        "type": "text/javascript",
+                        "exec": [
+                          "pm.test('Status is 404 Not Found', function () {",
+                          "    pm.response.to.have.status(404);",
+                          "});"
+                        ]
+                      }
+                    }
+                  ],
+                  "request": {
+                    "method": "POST",
+                    "header": [
+                      {
+                        "key": "Content-Type",
+                        "value": "application/json"
+                      }
+                    ],
+                    "url": {
+                      "raw": "{{baseUrl}}/api/bookings/book-show-seats",
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
+                      "path": [
+                        "api",
+                        "bookings",
+                        "book-show-seats"
+                      ]
+                    },
+                    "description": "",
+                    "body": {
+                      "mode": "raw",
+                      "raw": "{\n  \"userId\": {{invalidUserId}},\n  \"showSeatIds\": {{availableShowSeatIds}}\n}"
+                    }
+                  },
+                  "response": []
+                },
+                {
+                  "name": "POST /api/bookings/book-show-seats - duplicate showSeatIds (409)",
+                  "event": [
+                    {
+                      "listen": "test",
+                      "script": {
+                        "type": "text/javascript",
+                        "exec": [
+                          "pm.test('Status is 409 Conflict', function () {",
+                          "    pm.response.to.have.status(409);",
+                          "});"
+                        ]
+                      }
+                    }
+                  ],
+                  "request": {
+                    "method": "POST",
+                    "header": [
+                      {
+                        "key": "Content-Type",
+                        "value": "application/json"
+                      }
+                    ],
+                    "url": {
+                      "raw": "{{baseUrl}}/api/bookings/book-show-seats",
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
+                      "path": [
+                        "api",
+                        "bookings",
+                        "book-show-seats"
+                      ]
+                    },
+                    "description": "",
+                    "body": {
+                      "mode": "raw",
+                      "raw": "{\n  \"userId\": {{validUserId}},\n  \"showSeatIds\": {{duplicateShowSeatIds}}\n}"
+                    }
+                  },
+                  "response": []
+                },
+                {
+                  "name": "POST /api/bookings/book-show-seats - showSeats from different shows (409)",
+                  "event": [
+                    {
+                      "listen": "test",
+                      "script": {
+                        "type": "text/javascript",
+                        "exec": [
+                          "pm.test('Status is 409 Conflict', function () {",
+                          "    pm.response.to.have.status(409);",
+                          "});"
+                        ]
+                      }
+                    }
+                  ],
+                  "request": {
+                    "method": "POST",
+                    "header": [
+                      {
+                        "key": "Content-Type",
+                        "value": "application/json"
+                      }
+                    ],
+                    "url": {
+                      "raw": "{{baseUrl}}/api/bookings/book-show-seats",
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
+                      "path": [
+                        "api",
+                        "bookings",
+                        "book-show-seats"
+                      ]
+                    },
+                    "description": "",
+                    "body": {
+                      "mode": "raw",
+                      "raw": "{\n  \"userId\": {{validUserId}},\n  \"showSeatIds\": {{mixedShowShowSeatIds}}\n}"
+                    }
+                  },
+                  "response": []
+                },
+                {
+                  "name": "POST /api/bookings/book-show-seats - showSeat BLOCKED in seed (409)",
+                  "event": [
+                    {
+                      "listen": "test",
+                      "script": {
+                        "type": "text/javascript",
+                        "exec": [
+                          "pm.test('Status is 409 Conflict', function () {",
+                          "    pm.response.to.have.status(409);",
+                          "});"
+                        ]
+                      }
+                    }
+                  ],
+                  "request": {
+                    "method": "POST",
+                    "header": [
+                      {
+                        "key": "Content-Type",
+                        "value": "application/json"
+                      }
+                    ],
+                    "url": {
+                      "raw": "{{baseUrl}}/api/bookings/book-show-seats",
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
+                      "path": [
+                        "api",
+                        "bookings",
+                        "book-show-seats"
+                      ]
+                    },
+                    "description": "",
+                    "body": {
+                      "mode": "raw",
+                      "raw": "{\n  \"userId\": {{validUserId}},\n  \"showSeatIds\": {{blockedShowSeatIds}}\n}"
+                    }
+                  },
+                  "response": []
+                },
+                {
+                  "name": "POST /api/bookings/book-show-seats - non-existent showSeat (409)",
+                  "event": [
+                    {
+                      "listen": "test",
+                      "script": {
+                        "type": "text/javascript",
+                        "exec": [
+                          "pm.test('Status is 409 Conflict', function () {",
+                          "    pm.response.to.have.status(409);",
+                          "});"
+                        ]
+                      }
+                    }
+                  ],
+                  "request": {
+                    "method": "POST",
+                    "header": [
+                      {
+                        "key": "Content-Type",
+                        "value": "application/json"
+                      }
+                    ],
+                    "url": {
+                      "raw": "{{baseUrl}}/api/bookings/book-show-seats",
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
+                      "path": [
+                        "api",
+                        "bookings",
+                        "book-show-seats"
+                      ]
+                    },
+                    "description": "",
+                    "body": {
+                      "mode": "raw",
+                      "raw": "{\n  \"userId\": {{validUserId}},\n  \"showSeatIds\": [999999]\n}"
+                    }
+                  },
+                  "response": []
+                },
+                {
+                  "name": "POST /api/bookings/{{showBookingId}}/confirm - already confirmed (409)",
+                  "event": [
+                    {
+                      "listen": "test",
+                      "script": {
+                        "type": "text/javascript",
+                        "exec": [
+                          "pm.test('Status is 409 Conflict', function () {",
+                          "    pm.response.to.have.status(409);",
+                          "});"
+                        ]
+                      }
+                    }
+                  ],
+                  "request": {
+                    "method": "POST",
+                    "header": [],
+                    "url": {
+                      "raw": "{{baseUrl}}/api/bookings/{{showBookingId}}/confirm",
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
+                      "path": [
+                        "api",
+                        "bookings",
+                        "{{showBookingId}}",
+                        "confirm"
+                      ]
+                    },
+                    "description": ""
+                  },
+                  "response": []
+                }
+              ],
+              "description": "Show-seat conflicts (requires seed data)."
+            }
+          ],
+          "description": "Book via showSeatIds (per-showtime inventory). Uses Phoenix show 3 / showSeats 5-6 to avoid theatre-1 seat conflicts."
         }
       ],
       "description": "Seat holds and lifecycle. Run Auth login first. Negative cases use seed data before Book success consumes seats 1,2."
@@ -5073,6 +6396,51 @@
       "name": "Security Edge Cases",
       "item": [
         {
+          "name": "POST /api/bookings/book-show-seats - missing token (401)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 401 Unauthorized', function () {",
+                  "    pm.response.to.have.status(401);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/bookings/book-show-seats",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "bookings",
+                "book-show-seats"
+              ]
+            },
+            "description": "",
+            "auth": {
+              "type": "noauth"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"userId\": {{validUserId}},\n  \"showSeatIds\": [1]\n}"
+            }
+          },
+          "response": []
+        },
+        {
           "name": "POST /api/bookings/book - missing token (401)",
           "event": [
             {
@@ -5587,6 +6955,51 @@
     {
       "key": "duplicateSeatIds",
       "value": "[1, 1]",
+      "type": "string"
+    },
+    {
+      "key": "validShowId",
+      "value": "3",
+      "type": "string"
+    },
+    {
+      "key": "availableShowSeatIds",
+      "value": "[5, 6]",
+      "type": "string"
+    },
+    {
+      "key": "show2AvailableShowSeatIds",
+      "value": "[3]",
+      "type": "string"
+    },
+    {
+      "key": "blockedShowSeatIds",
+      "value": "[4]",
+      "type": "string"
+    },
+    {
+      "key": "mixedShowShowSeatIds",
+      "value": "[1, 5]",
+      "type": "string"
+    },
+    {
+      "key": "duplicateShowSeatIds",
+      "value": "[5, 5]",
+      "type": "string"
+    },
+    {
+      "key": "lastServerTimeEpochMs",
+      "value": "0",
+      "type": "string"
+    },
+    {
+      "key": "showBookingId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "showBookingIdCancel",
+      "value": "",
       "type": "string"
     },
     {

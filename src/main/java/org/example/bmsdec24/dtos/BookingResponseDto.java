@@ -14,6 +14,7 @@ public class BookingResponseDto {
     private UserResponseDto user;
     private MovieResponseDto movie;
     private TheatreResponseDto theatre;
+    private ShowResponseDto show;
     private List<SeatResponseDto> seats;
     private BookingStatus status;
     private double totalAmount;
@@ -30,6 +31,9 @@ public class BookingResponseDto {
         dto.setUser(UserResponseDto.from(booking.getUser()));
         dto.setMovie(MovieResponseDto.from(booking.getMovie()));
         dto.setTheatre(TheatreResponseDto.from(booking.getTheatre()));
+        if (booking.getShow() != null) {
+            dto.setShow(ShowResponseDto.from(booking.getShow()));
+        }
         if (booking.getSeats() != null) {
             dto.setSeats(booking.getSeats().stream()
                     .map(SeatResponseDto::from)
@@ -90,6 +94,14 @@ public class BookingResponseDto {
 
     public void setTheatre(TheatreResponseDto theatre) {
         this.theatre = theatre;
+    }
+
+    public ShowResponseDto getShow() {
+        return show;
+    }
+
+    public void setShow(ShowResponseDto show) {
+        this.show = show;
     }
 
     public List<SeatResponseDto> getSeats() {
