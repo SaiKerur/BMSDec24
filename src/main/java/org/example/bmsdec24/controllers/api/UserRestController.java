@@ -1,27 +1,51 @@
 package org.example.bmsdec24.controllers.api;
 
+import org.example.bmsdec24.dtos.BookingResponseDto;
 import org.example.bmsdec24.dtos.ResponseStatus;
 import org.example.bmsdec24.dtos.SignupRequestDto;
 import org.example.bmsdec24.dtos.SignupResponseDto;
+import org.example.bmsdec24.exceptions.AccessDeniedException;
 import org.example.bmsdec24.exceptions.InvalidRequestException;
 import org.example.bmsdec24.exceptions.UserAlreadyPresentException;
+import org.example.bmsdec24.models.BookingStatus;
 import org.example.bmsdec24.models.User;
+import org.example.bmsdec24.security.AuthenticatedUser;
+import org.example.bmsdec24.security.SecurityUtils;
+import org.example.bmsdec24.services.BookingService;
 import org.example.bmsdec24.services.UserService;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+
+import java.util.List;
 
 @RestController
 @RequestMapping("/api/users")
 public class UserRestController {
 
     private final UserService userService;
+    private final BookingService bookingService;
 
-    public UserRestController(UserService userService) {
+    public UserRestController(UserService userService, BookingService bookingService) {
         this.userService = userService;
+        this.bookingService = bookingService;
+    }
+
+    @GetMapping("/me/bookings")
+    public ResponseEntity<List<BookingResponseDto>> listMyBookings(
+            @RequestParam(required = false) BookingStatus status)
+            throws AccessDeniedException {
+        AuthenticatedUser currentUser = SecurityUtils.requireCurrentUser();
+        List<BookingResponseDto> bookings = bookingService.listBookingsForUser(currentUser.getUserId(), status)
+                .stream()
+                .map(BookingResponseDto::from)
+                .toList();
+        return ResponseEntity.ok(bookings);
     }
 
     @PostMapping("/signup")

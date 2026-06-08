@@ -5,6 +5,7 @@ import org.example.bmsdec24.exceptions.InvalidBookingException;
 import org.example.bmsdec24.exceptions.InvalidUserException;
 import org.example.bmsdec24.exceptions.SeatsNotAvailableException;
 import org.example.bmsdec24.models.Booking;
+import org.example.bmsdec24.models.BookingStatus;
 
 import java.util.List;
 
@@ -24,4 +25,6 @@ public interface BookingService {
     int releaseExpiredPendingBookings();
 
     Booking getBooking(int bookingId) throws InvalidBookingException;
+
+    List<Booking> listBookingsForUser(int userId, BookingStatus status);
 }

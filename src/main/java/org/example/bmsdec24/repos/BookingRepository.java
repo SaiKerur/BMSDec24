@@ -18,4 +18,10 @@ public interface BookingRepository extends JpaRepository<Booking, Integer> {
 
     @EntityGraph(attributePaths = {"seats"})
     List<Booking> findAllByStatusAndHoldExpiresAtBefore(BookingStatus status, Date holdExpiresAt);
+
+    @EntityGraph(attributePaths = {"seats", "seats.theatre", "movie", "theatre", "theatre.city", "user", "show", "show.screen"})
+    List<Booking> findAllByUser_IdOrderByCreatedAtDesc(int userId);
+
+    @EntityGraph(attributePaths = {"seats", "seats.theatre", "movie", "theatre", "theatre.city", "user", "show", "show.screen"})
+    List<Booking> findAllByUser_IdAndStatusOrderByCreatedAtDesc(int userId, BookingStatus status);
 }

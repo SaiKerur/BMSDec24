@@ -2,7 +2,7 @@
   "info": {
     "name": "BMSDec24 API - Full Scenarios",
     "_postman_id": "c5b7f498-52ab-4b85-a5bc-b2f42ce6f5f2",
-    "description": "End-to-end and edge-case coverage for the BMSDec24 API.\n\n**Runner order (recommended):**\n1. Health\n2. Catalog (public — happy path then edge cases)\n3. Shows (Real-time) — public showtimes + availability polling\n4. Users → Signup success → Users edge cases\n5. Auth → Login seed user (or signup + login) → Auth edge cases\n6. Bookings → Edge cases validation → Edge cases business rules → Happy path → Real-time show seats (edge cases then happy path)\n7. Payments → Edge cases validation → Edge cases business rules → Happy path (run in this order; seats 6–9 used in business rules first)\n8. Security Edge Cases\n\n**Prerequisites:** MySQL — run `db/seed_bmsdec24.sql` after first start. H2 profile — demo data loads automatically.\n\n**Real-time shows (H2 seed):**\n- Show 1 @ Orion — Action Blast — showSeats 1-2 AVAILABLE\n- Show 2 @ Orion — RomCom — showSeat 3 AVAILABLE, 4 BLOCKED\n- Show 3 @ Phoenix — Action Blast — showSeats 5-6 AVAILABLE\n- Poll: `GET /api/shows/{showId}/availability?changedAfterEpochMs={serverTime}`\n\n**Payments (mock — `bms.payment.mock-enabled=true`):**\n- Stripe success: `signature` starts with `whsec_`\n- Razorpay success: `signature` starts with `rzp_sig_`\n\n**Seed reference:** Theatre 1 movies 1,2 — seats 1-2 AVAILABLE, 3-4 BOOKED, 5 BLOCKED. Theatre 2 movies 1,3 — seats 6-9 AVAILABLE. Seed users: john.seed@example.com / Password@123",
+    "description": "End-to-end and edge-case coverage for the BMSDec24 API.\n\n**Runner order (recommended):**\n1. Health\n2. Catalog (public — happy path then edge cases)\n3. Shows (Real-time) — public showtimes + availability polling\n4. Users → Signup success → Users edge cases\n5. Auth → Login seed user (or signup + login) → Auth edge cases\n6. Bookings → Edge cases validation → Edge cases business rules → Happy path → Real-time show seats (edge cases then happy path)\n7. Payments → Edge cases validation → Edge cases business rules → Happy path (run in this order; seats 6–9 used in business rules first)\n8. Security Edge Cases\n\n**Prerequisites:** MySQL — run `db/seed_bmsdec24.sql` after first start. H2 profile — demo data loads automatically.\n\n**Real-time shows (H2 seed):**\n- Show 1 @ Orion — Action Blast — showSeats 1-2 AVAILABLE\n- Show 2 @ Orion — RomCom — showSeat 3 AVAILABLE, 4 BLOCKED\n- Show 3 @ Phoenix — Action Blast — showSeats 5-6 AVAILABLE\n- Poll: `GET /api/shows/{showId}/availability?changedAfterEpochMs={serverTime}`\n\n**Payments (mock — `bms.payment.mock-enabled=true`):**\n- Stripe success: `signature` starts with `whsec_`\n- Razorpay success: `signature` starts with `rzp_sig_`\n\n**Auth & ownership:** userId is taken from JWT on book endpoints (do not send userId in body). Booking 1 belongs to john (USER). admin.seed@example.com (ADMIN) and partner.seed@example.com (PARTNER) can access any booking. cleanup-expired requires ADMIN or PARTNER.\n\n**Seed reference:** Theatre 1 movies 1,2 — seats 1-2 AVAILABLE, 3-4 BOOKED, 5 BLOCKED. Theatre 2 movies 1,3 — seats 6-9 AVAILABLE. Seed users: john.seed@example.com / Password@123 (USER), admin.seed@example.com (ADMIN)",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "auth": {
@@ -2092,7 +2092,8 @@
                       "pm.test('Status is 200 OK', function () { pm.response.to.have.status(200); });",
                       "const json = pm.response.json();",
                       "pm.test('userId present', function () { pm.expect(json.userId).to.exist; });",
-                      "pm.test('email present', function () { pm.expect(json.email).to.be.a('string').and.not.empty; });"
+                      "pm.test('email present', function () { pm.expect(json.email).to.be.a('string').and.not.empty; });",
+                      "pm.test('role present', function () { pm.expect(json.role).to.eql('USER'); });"
                     ]
                   }
                 }
@@ -2112,6 +2113,50 @@
                   ]
                 },
                 "description": ""
+              },
+              "response": []
+            },
+            {
+              "name": "POST /api/auth/login - admin user (stores adminAccessToken)",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('Status is 200 OK', function () { pm.response.to.have.status(200); });",
+                      "pm.collectionVariables.set('adminAccessToken', pm.response.json().accessToken);"
+                    ]
+                  }
+                }
+              ],
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/auth/login",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "auth",
+                    "login"
+                  ]
+                },
+                "description": "",
+                "auth": {
+                  "type": "noauth"
+                },
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"email\": \"{{adminEmail}}\",\n  \"password\": \"{{password}}\"\n}"
+                }
               },
               "response": []
             }
@@ -2768,21 +2813,332 @@
       "name": "Bookings",
       "item": [
         {
+          "name": "Ownership & authorization",
+          "item": [
+            {
+              "name": "GET /api/users/me/bookings - list my bookings",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('Status is 200', function () {",
+                      "    pm.response.to.have.status(200);",
+                      "});",
+                      "pm.test('Returns booking array', function () { pm.expect(pm.response.json()).to.be.an('array'); });"
+                    ]
+                  }
+                }
+              ],
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/api/users/me/bookings",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "users",
+                    "me",
+                    "bookings"
+                  ]
+                },
+                "description": ""
+              },
+              "response": []
+            },
+            {
+              "name": "GET /api/users/me/bookings?status=PENDING - filter by status",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('Status is 200', function () {",
+                      "    pm.response.to.have.status(200);",
+                      "});",
+                      "pm.response.json().forEach(function (b) { pm.expect(b.status).to.eql('PENDING'); });"
+                    ]
+                  }
+                }
+              ],
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/api/users/me/bookings?status=PENDING",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "users",
+                    "me",
+                    "bookings?status=PENDING"
+                  ]
+                },
+                "description": ""
+              },
+              "response": []
+            },
+            {
+              "name": "Setup: login as amy (stores amyAccessToken)",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('Status is 200 OK', function () { pm.response.to.have.status(200); });",
+                      "pm.collectionVariables.set('amyAccessToken', pm.response.json().accessToken);"
+                    ]
+                  }
+                }
+              ],
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/auth/login",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "auth",
+                    "login"
+                  ]
+                },
+                "description": "",
+                "auth": {
+                  "type": "noauth"
+                },
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"email\": \"amy.seed@example.com\",\n  \"password\": \"{{password}}\"\n}"
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "GET /api/bookings/{{seedConfirmedBookingId}} - another user booking (403)",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('Status is 403 Forbidden', function () {",
+                      "    pm.response.to.have.status(403);",
+                      "});"
+                    ]
+                  }
+                }
+              ],
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{amyAccessToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/bookings/{{seedConfirmedBookingId}}",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "bookings",
+                    "{{seedConfirmedBookingId}}"
+                  ]
+                },
+                "description": "",
+                "auth": {
+                  "type": "noauth"
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "POST /api/bookings/{{seedConfirmedBookingId}}/cancel - another user booking (403)",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('Status is 403 Forbidden', function () {",
+                      "    pm.response.to.have.status(403);",
+                      "});"
+                    ]
+                  }
+                }
+              ],
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{amyAccessToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/bookings/{{seedConfirmedBookingId}}/cancel",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "bookings",
+                    "{{seedConfirmedBookingId}}",
+                    "cancel"
+                  ]
+                },
+                "description": "",
+                "auth": {
+                  "type": "noauth"
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Setup: re-login as john (restore accessToken)",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.collectionVariables.set('accessToken', pm.response.json().accessToken);",
+                      "pm.collectionVariables.set('refreshToken', pm.response.json().refreshToken);"
+                    ]
+                  }
+                }
+              ],
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/auth/login",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "auth",
+                    "login"
+                  ]
+                },
+                "description": "",
+                "auth": {
+                  "type": "noauth"
+                },
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"email\": \"john.seed@example.com\",\n  \"password\": \"{{password}}\"\n}"
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "POST /api/bookings/cleanup-expired - USER role forbidden (403)",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('Status is 403 Forbidden', function () {",
+                      "    pm.response.to.have.status(403);",
+                      "});"
+                    ]
+                  }
+                }
+              ],
+              "request": {
+                "method": "POST",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/api/bookings/cleanup-expired",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "bookings",
+                    "cleanup-expired"
+                  ]
+                },
+                "description": ""
+              },
+              "response": []
+            },
+            {
+              "name": "POST /api/bookings/cleanup-expired - ADMIN allowed",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('Status is 200 OK', function () {",
+                      "    pm.response.to.have.status(200);",
+                      "});"
+                    ]
+                  }
+                }
+              ],
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{adminAccessToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/bookings/cleanup-expired",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "bookings",
+                    "cleanup-expired"
+                  ]
+                },
+                "description": "",
+                "auth": {
+                  "type": "noauth"
+                }
+              },
+              "response": []
+            }
+          ],
+          "description": "Booking access is scoped to owner; ADMIN/PARTNER can access all."
+        },
+        {
           "name": "Happy path",
           "item": [
             {
               "name": "POST /api/bookings/book - success (stores bookingId)",
               "event": [
-                {
-                  "listen": "prerequest",
-                  "script": {
-                    "type": "text/javascript",
-                    "exec": [
-                      "const u = pm.collectionVariables.get('signedUpUserId') || pm.collectionVariables.get('validUserId');",
-                      "pm.variables.set('bookingUserId', u);"
-                    ]
-                  }
-                },
                 {
                   "listen": "test",
                   "script": {
@@ -2820,7 +3176,7 @@
                 "description": "",
                 "body": {
                   "mode": "raw",
-                  "raw": "{\n  \"userId\": {{bookingUserId}},\n  \"movieId\": {{validMovieId}},\n  \"seatIds\": {{availableSeatIds}}\n}"
+                  "raw": "{\n  \"movieId\": {{validMovieId}},\n  \"seatIds\": {{availableSeatIds}}\n}"
                 }
               },
               "response": []
@@ -2896,16 +3252,6 @@
               "name": "Setup: book seats for cancel flow (stores bookingIdCancel)",
               "event": [
                 {
-                  "listen": "prerequest",
-                  "script": {
-                    "type": "text/javascript",
-                    "exec": [
-                      "const u = pm.collectionVariables.get('signedUpUserId') || pm.collectionVariables.get('validUserId');",
-                      "pm.variables.set('bookingUserId', u);"
-                    ]
-                  }
-                },
-                {
                   "listen": "test",
                   "script": {
                     "type": "text/javascript",
@@ -2938,7 +3284,7 @@
                 "description": "",
                 "body": {
                   "mode": "raw",
-                  "raw": "{\n  \"userId\": {{bookingUserId}},\n  \"movieId\": 1,\n  \"seatIds\": {{theatre2SeatIds}}\n}"
+                  "raw": "{\n  \"movieId\": 1,\n  \"seatIds\": {{theatre2SeatIds}}\n}"
                 }
               },
               "response": []
@@ -3003,42 +3349,6 @@
                     "bookings",
                     "{{bookingIdCancel}}",
                     "cancel"
-                  ]
-                },
-                "description": ""
-              },
-              "response": []
-            },
-            {
-              "name": "POST /api/bookings/cleanup-expired - run cleanup",
-              "event": [
-                {
-                  "listen": "test",
-                  "script": {
-                    "type": "text/javascript",
-                    "exec": [
-                      "pm.test('Status is 200 OK', function () { pm.response.to.have.status(200); });",
-                      "pm.test('Body is numeric count', function () {",
-                      "    const n = Number(pm.response.text());",
-                      "    pm.expect(Number.isNaN(n)).to.eql(false);",
-                      "    pm.expect(n).to.be.at.least(0);",
-                      "});"
-                    ]
-                  }
-                }
-              ],
-              "request": {
-                "method": "POST",
-                "header": [],
-                "url": {
-                  "raw": "{{baseUrl}}/api/bookings/cleanup-expired",
-                  "host": [
-                    "{{baseUrl}}"
-                  ],
-                  "path": [
-                    "api",
-                    "bookings",
-                    "cleanup-expired"
                   ]
                 },
                 "description": ""
@@ -3126,48 +3436,6 @@
               "response": []
             },
             {
-              "name": "POST /api/bookings/book - userId zero (400)",
-              "event": [
-                {
-                  "listen": "test",
-                  "script": {
-                    "type": "text/javascript",
-                    "exec": [
-                      "pm.test('Status is 400 Bad Request', function () {",
-                      "    pm.response.to.have.status(400);",
-                      "});"
-                    ]
-                  }
-                }
-              ],
-              "request": {
-                "method": "POST",
-                "header": [
-                  {
-                    "key": "Content-Type",
-                    "value": "application/json"
-                  }
-                ],
-                "url": {
-                  "raw": "{{baseUrl}}/api/bookings/book",
-                  "host": [
-                    "{{baseUrl}}"
-                  ],
-                  "path": [
-                    "api",
-                    "bookings",
-                    "book"
-                  ]
-                },
-                "description": "",
-                "body": {
-                  "mode": "raw",
-                  "raw": "{\n  \"userId\": 0,\n  \"movieId\": {{validMovieId}},\n  \"seatIds\": {{availableSeatIds}}\n}"
-                }
-              },
-              "response": []
-            },
-            {
               "name": "POST /api/bookings/book - movieId zero (400)",
               "event": [
                 {
@@ -3204,7 +3472,7 @@
                 "description": "",
                 "body": {
                   "mode": "raw",
-                  "raw": "{\n  \"userId\": {{validUserId}},\n  \"movieId\": 0,\n  \"seatIds\": {{availableSeatIds}}\n}"
+                  "raw": "{\n  \"movieId\": 0,\n  \"seatIds\": {{availableSeatIds}}\n}"
                 }
               },
               "response": []
@@ -3246,7 +3514,7 @@
                 "description": "",
                 "body": {
                   "mode": "raw",
-                  "raw": "{\n  \"userId\": {{validUserId}},\n  \"movieId\": {{validMovieId}},\n  \"seatIds\": []\n}"
+                  "raw": "{\n  \"movieId\": {{validMovieId}},\n  \"seatIds\": []\n}"
                 }
               },
               "response": []
@@ -3288,7 +3556,7 @@
                 "description": "",
                 "body": {
                   "mode": "raw",
-                  "raw": "{\n  \"userId\": {{validUserId}},\n  \"movieId\": {{validMovieId}}\n}"
+                  "raw": "{\n  \"movieId\": {{validMovieId}}\n}"
                 }
               },
               "response": []
@@ -3401,48 +3669,6 @@
           "name": "Edge cases - business rules",
           "item": [
             {
-              "name": "POST /api/bookings/book - invalid userId (404)",
-              "event": [
-                {
-                  "listen": "test",
-                  "script": {
-                    "type": "text/javascript",
-                    "exec": [
-                      "pm.test('Status is 404 Not Found', function () {",
-                      "    pm.response.to.have.status(404);",
-                      "});"
-                    ]
-                  }
-                }
-              ],
-              "request": {
-                "method": "POST",
-                "header": [
-                  {
-                    "key": "Content-Type",
-                    "value": "application/json"
-                  }
-                ],
-                "url": {
-                  "raw": "{{baseUrl}}/api/bookings/book",
-                  "host": [
-                    "{{baseUrl}}"
-                  ],
-                  "path": [
-                    "api",
-                    "bookings",
-                    "book"
-                  ]
-                },
-                "description": "",
-                "body": {
-                  "mode": "raw",
-                  "raw": "{\n  \"userId\": {{invalidUserId}},\n  \"movieId\": {{validMovieId}},\n  \"seatIds\": {{availableSeatIds}}\n}"
-                }
-              },
-              "response": []
-            },
-            {
               "name": "POST /api/bookings/book - duplicate seat IDs (409)",
               "event": [
                 {
@@ -3479,7 +3705,7 @@
                 "description": "",
                 "body": {
                   "mode": "raw",
-                  "raw": "{\n  \"userId\": {{validUserId}},\n  \"movieId\": {{validMovieId}},\n  \"seatIds\": {{duplicateSeatIds}}\n}"
+                  "raw": "{\n  \"movieId\": {{validMovieId}},\n  \"seatIds\": {{duplicateSeatIds}}\n}"
                 }
               },
               "response": []
@@ -3521,7 +3747,7 @@
                 "description": "",
                 "body": {
                   "mode": "raw",
-                  "raw": "{\n  \"userId\": {{validUserId}},\n  \"movieId\": {{validMovieId}},\n  \"seatIds\": {{mixedTheatreSeatIds}}\n}"
+                  "raw": "{\n  \"movieId\": {{validMovieId}},\n  \"seatIds\": {{mixedTheatreSeatIds}}\n}"
                 }
               },
               "response": []
@@ -3563,7 +3789,7 @@
                 "description": "",
                 "body": {
                   "mode": "raw",
-                  "raw": "{\n  \"userId\": {{validUserId}},\n  \"movieId\": {{movieNotInTheatre1}},\n  \"seatIds\": {{availableSeatIds}}\n}"
+                  "raw": "{\n  \"movieId\": {{movieNotInTheatre1}},\n  \"seatIds\": {{availableSeatIds}}\n}"
                 }
               },
               "response": []
@@ -3605,7 +3831,7 @@
                 "description": "",
                 "body": {
                   "mode": "raw",
-                  "raw": "{\n  \"userId\": {{validUserId}},\n  \"movieId\": {{validMovieId}},\n  \"seatIds\": {{bookedSeatIds}}\n}"
+                  "raw": "{\n  \"movieId\": {{validMovieId}},\n  \"seatIds\": {{bookedSeatIds}}\n}"
                 }
               },
               "response": []
@@ -3647,7 +3873,7 @@
                 "description": "",
                 "body": {
                   "mode": "raw",
-                  "raw": "{\n  \"userId\": {{validUserId}},\n  \"movieId\": {{validMovieId}},\n  \"seatIds\": {{blockedSeatIds}}\n}"
+                  "raw": "{\n  \"movieId\": {{validMovieId}},\n  \"seatIds\": {{blockedSeatIds}}\n}"
                 }
               },
               "response": []
@@ -3689,7 +3915,7 @@
                 "description": "",
                 "body": {
                   "mode": "raw",
-                  "raw": "{\n  \"userId\": {{validUserId}},\n  \"movieId\": {{validMovieId}},\n  \"seatIds\": [999999]\n}"
+                  "raw": "{\n  \"movieId\": {{validMovieId}},\n  \"seatIds\": [999999]\n}"
                 }
               },
               "response": []
@@ -3833,16 +4059,6 @@
               "name": "Setup: book for confirm-on-cancelled test",
               "event": [
                 {
-                  "listen": "prerequest",
-                  "script": {
-                    "type": "text/javascript",
-                    "exec": [
-                      "const u = pm.collectionVariables.get('signedUpUserId') || pm.collectionVariables.get('validUserId');",
-                      "pm.variables.set('bookingUserId', u);"
-                    ]
-                  }
-                },
-                {
                   "listen": "test",
                   "script": {
                     "type": "text/javascript",
@@ -3874,7 +4090,7 @@
                 "description": "",
                 "body": {
                   "mode": "raw",
-                  "raw": "{\n  \"userId\": {{bookingUserId}},\n  \"movieId\": 1,\n  \"seatIds\": [8]\n}"
+                  "raw": "{\n  \"movieId\": 1,\n  \"seatIds\": [8]\n}"
                 }
               },
               "response": []
@@ -3994,16 +4210,6 @@
                   "name": "POST /api/bookings/book-show-seats - success (stores showBookingId)",
                   "event": [
                     {
-                      "listen": "prerequest",
-                      "script": {
-                        "type": "text/javascript",
-                        "exec": [
-                          "const u = pm.collectionVariables.get('signedUpUserId') || pm.collectionVariables.get('validUserId');",
-                          "pm.variables.set('bookingUserId', u);"
-                        ]
-                      }
-                    },
-                    {
                       "listen": "test",
                       "script": {
                         "type": "text/javascript",
@@ -4040,7 +4246,7 @@
                     "description": "Hold seats for a specific showtime. Syncs ShowSeat + theatre Seat status.",
                     "body": {
                       "mode": "raw",
-                      "raw": "{\n  \"userId\": {{bookingUserId}},\n  \"showSeatIds\": {{availableShowSeatIds}}\n}"
+                      "raw": "{\n  \"showSeatIds\": {{availableShowSeatIds}}\n}"
                     }
                   },
                   "response": []
@@ -4114,16 +4320,6 @@
                   "name": "Setup: book show seats for cancel flow (stores showBookingIdCancel)",
                   "event": [
                     {
-                      "listen": "prerequest",
-                      "script": {
-                        "type": "text/javascript",
-                        "exec": [
-                          "const u = pm.collectionVariables.get('signedUpUserId') || pm.collectionVariables.get('validUserId');",
-                          "pm.variables.set('bookingUserId', u);"
-                        ]
-                      }
-                    },
-                    {
                       "listen": "test",
                       "script": {
                         "type": "text/javascript",
@@ -4156,7 +4352,7 @@
                     "description": "",
                     "body": {
                       "mode": "raw",
-                      "raw": "{\n  \"userId\": {{bookingUserId}},\n  \"showSeatIds\": {{show2AvailableShowSeatIds}}\n}"
+                      "raw": "{\n  \"showSeatIds\": {{show2AvailableShowSeatIds}}\n}"
                     }
                   },
                   "response": []
@@ -4317,48 +4513,6 @@
                   "response": []
                 },
                 {
-                  "name": "POST /api/bookings/book-show-seats - userId zero (400)",
-                  "event": [
-                    {
-                      "listen": "test",
-                      "script": {
-                        "type": "text/javascript",
-                        "exec": [
-                          "pm.test('Status is 400 Bad Request', function () {",
-                          "    pm.response.to.have.status(400);",
-                          "});"
-                        ]
-                      }
-                    }
-                  ],
-                  "request": {
-                    "method": "POST",
-                    "header": [
-                      {
-                        "key": "Content-Type",
-                        "value": "application/json"
-                      }
-                    ],
-                    "url": {
-                      "raw": "{{baseUrl}}/api/bookings/book-show-seats",
-                      "host": [
-                        "{{baseUrl}}"
-                      ],
-                      "path": [
-                        "api",
-                        "bookings",
-                        "book-show-seats"
-                      ]
-                    },
-                    "description": "",
-                    "body": {
-                      "mode": "raw",
-                      "raw": "{\n  \"userId\": 0,\n  \"showSeatIds\": {{availableShowSeatIds}}\n}"
-                    }
-                  },
-                  "response": []
-                },
-                {
                   "name": "POST /api/bookings/book-show-seats - empty showSeatIds (400)",
                   "event": [
                     {
@@ -4395,7 +4549,7 @@
                     "description": "",
                     "body": {
                       "mode": "raw",
-                      "raw": "{\n  \"userId\": {{validUserId}},\n  \"showSeatIds\": []\n}"
+                      "raw": "{\n  \"showSeatIds\": []\n}"
                     }
                   },
                   "response": []
@@ -4437,7 +4591,7 @@
                     "description": "",
                     "body": {
                       "mode": "raw",
-                      "raw": "{\n  \"userId\": {{validUserId}}\n}"
+                      "raw": "{}"
                     }
                   },
                   "response": []
@@ -4448,48 +4602,6 @@
             {
               "name": "Edge cases - business rules",
               "item": [
-                {
-                  "name": "POST /api/bookings/book-show-seats - invalid userId (404)",
-                  "event": [
-                    {
-                      "listen": "test",
-                      "script": {
-                        "type": "text/javascript",
-                        "exec": [
-                          "pm.test('Status is 404 Not Found', function () {",
-                          "    pm.response.to.have.status(404);",
-                          "});"
-                        ]
-                      }
-                    }
-                  ],
-                  "request": {
-                    "method": "POST",
-                    "header": [
-                      {
-                        "key": "Content-Type",
-                        "value": "application/json"
-                      }
-                    ],
-                    "url": {
-                      "raw": "{{baseUrl}}/api/bookings/book-show-seats",
-                      "host": [
-                        "{{baseUrl}}"
-                      ],
-                      "path": [
-                        "api",
-                        "bookings",
-                        "book-show-seats"
-                      ]
-                    },
-                    "description": "",
-                    "body": {
-                      "mode": "raw",
-                      "raw": "{\n  \"userId\": {{invalidUserId}},\n  \"showSeatIds\": {{availableShowSeatIds}}\n}"
-                    }
-                  },
-                  "response": []
-                },
                 {
                   "name": "POST /api/bookings/book-show-seats - duplicate showSeatIds (409)",
                   "event": [
@@ -4527,7 +4639,7 @@
                     "description": "",
                     "body": {
                       "mode": "raw",
-                      "raw": "{\n  \"userId\": {{validUserId}},\n  \"showSeatIds\": {{duplicateShowSeatIds}}\n}"
+                      "raw": "{\n  \"showSeatIds\": {{duplicateShowSeatIds}}\n}"
                     }
                   },
                   "response": []
@@ -4569,7 +4681,7 @@
                     "description": "",
                     "body": {
                       "mode": "raw",
-                      "raw": "{\n  \"userId\": {{validUserId}},\n  \"showSeatIds\": {{mixedShowShowSeatIds}}\n}"
+                      "raw": "{\n  \"showSeatIds\": {{mixedShowShowSeatIds}}\n}"
                     }
                   },
                   "response": []
@@ -4611,7 +4723,7 @@
                     "description": "",
                     "body": {
                       "mode": "raw",
-                      "raw": "{\n  \"userId\": {{validUserId}},\n  \"showSeatIds\": {{blockedShowSeatIds}}\n}"
+                      "raw": "{\n  \"showSeatIds\": {{blockedShowSeatIds}}\n}"
                     }
                   },
                   "response": []
@@ -4653,7 +4765,7 @@
                     "description": "",
                     "body": {
                       "mode": "raw",
-                      "raw": "{\n  \"userId\": {{validUserId}},\n  \"showSeatIds\": [999999]\n}"
+                      "raw": "{\n  \"showSeatIds\": [999999]\n}"
                     }
                   },
                   "response": []
@@ -4699,7 +4811,7 @@
           "description": "Book via showSeatIds (per-showtime inventory). Uses Phoenix show 3 / showSeats 5-6 to avoid theatre-1 seat conflicts."
         }
       ],
-      "description": "Seat holds and lifecycle. Run Auth login first. Negative cases use seed data before Book success consumes seats 1,2."
+      "description": "Seat holds and lifecycle. userId comes from JWT (not request body). Run Auth login first."
     },
     {
       "name": "Payments",
@@ -5262,16 +5374,6 @@
               "name": "Setup: book seat 6 for duplicate initiate test",
               "event": [
                 {
-                  "listen": "prerequest",
-                  "script": {
-                    "type": "text/javascript",
-                    "exec": [
-                      "const u = pm.collectionVariables.get('signedUpUserId') || pm.collectionVariables.get('validUserId');",
-                      "pm.variables.set('bookingUserId', u);"
-                    ]
-                  }
-                },
-                {
                   "listen": "test",
                   "script": {
                     "type": "text/javascript",
@@ -5303,7 +5405,7 @@
                 "description": "",
                 "body": {
                   "mode": "raw",
-                  "raw": "{\n  \"userId\": {{bookingUserId}},\n  \"movieId\": 1,\n  \"seatIds\": [6]\n}"
+                  "raw": "{\n  \"movieId\": 1,\n  \"seatIds\": [6]\n}"
                 }
               },
               "response": []
@@ -5429,16 +5531,6 @@
               "name": "Setup: book seat 7 for Razorpay failure flow",
               "event": [
                 {
-                  "listen": "prerequest",
-                  "script": {
-                    "type": "text/javascript",
-                    "exec": [
-                      "const u = pm.collectionVariables.get('signedUpUserId') || pm.collectionVariables.get('validUserId');",
-                      "pm.variables.set('bookingUserId', u);"
-                    ]
-                  }
-                },
-                {
                   "listen": "test",
                   "script": {
                     "type": "text/javascript",
@@ -5470,7 +5562,7 @@
                 "description": "",
                 "body": {
                   "mode": "raw",
-                  "raw": "{\n  \"userId\": {{bookingUserId}},\n  \"movieId\": 1,\n  \"seatIds\": [7]\n}"
+                  "raw": "{\n  \"movieId\": 1,\n  \"seatIds\": [7]\n}"
                 }
               },
               "response": []
@@ -5560,16 +5652,6 @@
               "name": "Setup: rebook seat 7 for Stripe success=false callback",
               "event": [
                 {
-                  "listen": "prerequest",
-                  "script": {
-                    "type": "text/javascript",
-                    "exec": [
-                      "const u = pm.collectionVariables.get('signedUpUserId') || pm.collectionVariables.get('validUserId');",
-                      "pm.variables.set('bookingUserId', u);"
-                    ]
-                  }
-                },
-                {
                   "listen": "test",
                   "script": {
                     "type": "text/javascript",
@@ -5601,7 +5683,7 @@
                 "description": "",
                 "body": {
                   "mode": "raw",
-                  "raw": "{\n  \"userId\": {{bookingUserId}},\n  \"movieId\": 1,\n  \"seatIds\": [7]\n}"
+                  "raw": "{\n  \"movieId\": 1,\n  \"seatIds\": [7]\n}"
                 }
               },
               "response": []
@@ -5691,16 +5773,6 @@
               "name": "Setup: book seat 8 for Stripe bad-signature test",
               "event": [
                 {
-                  "listen": "prerequest",
-                  "script": {
-                    "type": "text/javascript",
-                    "exec": [
-                      "const u = pm.collectionVariables.get('signedUpUserId') || pm.collectionVariables.get('validUserId');",
-                      "pm.variables.set('bookingUserId', u);"
-                    ]
-                  }
-                },
-                {
                   "listen": "test",
                   "script": {
                     "type": "text/javascript",
@@ -5732,7 +5804,7 @@
                 "description": "",
                 "body": {
                   "mode": "raw",
-                  "raw": "{\n  \"userId\": {{bookingUserId}},\n  \"movieId\": 1,\n  \"seatIds\": [8]\n}"
+                  "raw": "{\n  \"movieId\": 1,\n  \"seatIds\": [8]\n}"
                 }
               },
               "response": []
@@ -5822,16 +5894,6 @@
               "name": "Setup: book seat 9 for Razorpay bad-signature test",
               "event": [
                 {
-                  "listen": "prerequest",
-                  "script": {
-                    "type": "text/javascript",
-                    "exec": [
-                      "const u = pm.collectionVariables.get('signedUpUserId') || pm.collectionVariables.get('validUserId');",
-                      "pm.variables.set('bookingUserId', u);"
-                    ]
-                  }
-                },
-                {
                   "listen": "test",
                   "script": {
                     "type": "text/javascript",
@@ -5863,7 +5925,7 @@
                 "description": "",
                 "body": {
                   "mode": "raw",
-                  "raw": "{\n  \"userId\": {{bookingUserId}},\n  \"movieId\": 1,\n  \"seatIds\": [9]\n}"
+                  "raw": "{\n  \"movieId\": 1,\n  \"seatIds\": [9]\n}"
                 }
               },
               "response": []
@@ -6000,16 +6062,6 @@
               "name": "Setup: book seats for Stripe payment (stores bookingIdPay)",
               "event": [
                 {
-                  "listen": "prerequest",
-                  "script": {
-                    "type": "text/javascript",
-                    "exec": [
-                      "const u = pm.collectionVariables.get('signedUpUserId') || pm.collectionVariables.get('validUserId');",
-                      "pm.variables.set('bookingUserId', u);"
-                    ]
-                  }
-                },
-                {
                   "listen": "test",
                   "script": {
                     "type": "text/javascript",
@@ -6044,7 +6096,7 @@
                 "description": "",
                 "body": {
                   "mode": "raw",
-                  "raw": "{\n  \"userId\": {{bookingUserId}},\n  \"movieId\": 1,\n  \"seatIds\": [8, 9]\n}"
+                  "raw": "{\n  \"movieId\": 1,\n  \"seatIds\": [8, 9]\n}"
                 }
               },
               "response": []
@@ -6173,16 +6225,6 @@
               "name": "Setup: book seats for Razorpay (stores bookingIdRzp)",
               "event": [
                 {
-                  "listen": "prerequest",
-                  "script": {
-                    "type": "text/javascript",
-                    "exec": [
-                      "const u = pm.collectionVariables.get('signedUpUserId') || pm.collectionVariables.get('validUserId');",
-                      "pm.variables.set('bookingUserId', u);"
-                    ]
-                  }
-                },
-                {
                   "listen": "test",
                   "script": {
                     "type": "text/javascript",
@@ -6214,7 +6256,7 @@
                 "description": "",
                 "body": {
                   "mode": "raw",
-                  "raw": "{\n  \"userId\": {{bookingUserId}},\n  \"movieId\": 1,\n  \"seatIds\": [6, 7]\n}"
+                  "raw": "{\n  \"movieId\": 1,\n  \"seatIds\": [6, 7]\n}"
                 }
               },
               "response": []
@@ -6435,7 +6477,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"userId\": {{validUserId}},\n  \"showSeatIds\": [1]\n}"
+              "raw": "{\n  \"showSeatIds\": [1]\n}"
             }
           },
           "response": []
@@ -6480,7 +6522,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"userId\": {{validUserId}},\n  \"movieId\": 1,\n  \"seatIds\": [1]\n}"
+              "raw": "{\n  \"movieId\": 1,\n  \"seatIds\": [1]\n}"
             }
           },
           "response": []
@@ -6529,7 +6571,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"userId\": {{validUserId}},\n  \"movieId\": 1,\n  \"seatIds\": [1]\n}"
+              "raw": "{\n  \"movieId\": 1,\n  \"seatIds\": [1]\n}"
             }
           },
           "response": []
@@ -6638,6 +6680,43 @@
                 "api",
                 "bookings",
                 "cleanup-expired"
+              ]
+            },
+            "description": "",
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "GET /api/users/me/bookings - missing token (401)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 401 Unauthorized', function () {",
+                  "    pm.response.to.have.status(401);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/users/me/bookings",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "users",
+                "me",
+                "bookings"
               ]
             },
             "description": "",
@@ -6914,6 +6993,21 @@
     },
     {
       "key": "refreshToken",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "adminEmail",
+      "value": "admin.seed@example.com",
+      "type": "string"
+    },
+    {
+      "key": "adminAccessToken",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "amyAccessToken",
       "value": "",
       "type": "string"
     },

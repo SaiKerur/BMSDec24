@@ -69,8 +69,8 @@ public class AuthServiceImpl implements AuthService {
     }
 
     private TokenResponseDto buildTokenResponse(User user) {
-        String accessToken = jwtService.generateAccessToken(user.getId(), user.getEmail());
-        String refresh = jwtService.generateRefreshToken(user.getId(), user.getEmail());
+        String accessToken = jwtService.generateAccessToken(user.getId(), user.getEmail(), user.getRole());
+        String refresh = jwtService.generateRefreshToken(user.getId(), user.getEmail(), user.getRole());
 
         TokenResponseDto response = new TokenResponseDto();
         response.setUserId(user.getId());

@@ -4,9 +4,15 @@ import org.example.bmsdec24.dtos.InitiatePaymentRequestDto;
 import org.example.bmsdec24.dtos.PaymentCallbackRequestDto;
 import org.example.bmsdec24.dtos.PaymentProviderOptionDto;
 import org.example.bmsdec24.dtos.PaymentResponseDto;
+import org.example.bmsdec24.exceptions.AccessDeniedException;
 import org.example.bmsdec24.exceptions.InvalidPaymentException;
 import org.example.bmsdec24.exceptions.InvalidRequestException;
 import org.example.bmsdec24.exceptions.PaymentAlreadyProcessedException;
+import org.example.bmsdec24.models.Payment;
+import org.example.bmsdec24.repos.PaymentRepository;
+import org.example.bmsdec24.security.AuthenticatedUser;
+import org.example.bmsdec24.security.BookingAccessService;
+import org.example.bmsdec24.security.SecurityUtils;
 import org.example.bmsdec24.services.PaymentService;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -24,9 +30,15 @@ import java.util.List;
 public class PaymentRestController {
 
     private final PaymentService paymentService;
+    private final PaymentRepository paymentRepository;
+    private final BookingAccessService bookingAccessService;
 
-    public PaymentRestController(PaymentService paymentService) {
+    public PaymentRestController(PaymentService paymentService,
+                                   PaymentRepository paymentRepository,
+                                   BookingAccessService bookingAccessService) {
         this.paymentService = paymentService;
+        this.paymentRepository = paymentRepository;
+        this.bookingAccessService = bookingAccessService;
     }
 
     @GetMapping("/providers")
@@ -36,8 +48,10 @@ public class PaymentRestController {
 
     @PostMapping("/initiate")
     public ResponseEntity<PaymentResponseDto> initiatePayment(@RequestBody InitiatePaymentRequestDto requestDto)
-            throws InvalidPaymentException, InvalidRequestException {
+            throws InvalidPaymentException, InvalidRequestException, AccessDeniedException {
         validateInitiateRequest(requestDto);
+        AuthenticatedUser currentUser = SecurityUtils.requireCurrentUser();
+        bookingAccessService.requireBookingAccess(requestDto.getBookingId(), currentUser);
         PaymentResponseDto response = paymentService.initiatePayment(
                 requestDto.getBookingId(), requestDto.getProvider());
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
@@ -45,8 +59,12 @@ public class PaymentRestController {
 
     @PostMapping("/callback")
     public ResponseEntity<PaymentResponseDto> handleCallback(@RequestBody PaymentCallbackRequestDto requestDto)
-            throws InvalidPaymentException, PaymentAlreadyProcessedException, InvalidRequestException {
+            throws InvalidPaymentException, PaymentAlreadyProcessedException, InvalidRequestException, AccessDeniedException {
         validateCallbackRequest(requestDto);
+        AuthenticatedUser currentUser = SecurityUtils.requireCurrentUser();
+        Payment payment = paymentRepository.findDetailedById(requestDto.getPaymentId())
+                .orElseThrow(() -> new InvalidPaymentException("No payment found with id: " + requestDto.getPaymentId()));
+        bookingAccessService.requirePaymentAccess(payment, currentUser);
         return ResponseEntity.ok(paymentService.completePayment(
                 requestDto.getPaymentId(),
                 requestDto.getPaymentReference(),
@@ -56,10 +74,14 @@ public class PaymentRestController {
 
     @GetMapping("/{paymentId}")
     public ResponseEntity<PaymentResponseDto> getPayment(@PathVariable int paymentId)
-            throws InvalidPaymentException, InvalidRequestException {
+            throws InvalidPaymentException, InvalidRequestException, AccessDeniedException {
         if (paymentId <= 0) {
             throw new InvalidRequestException("paymentId must be a positive integer");
         }
+        AuthenticatedUser currentUser = SecurityUtils.requireCurrentUser();
+        Payment payment = paymentRepository.findDetailedById(paymentId)
+                .orElseThrow(() -> new InvalidPaymentException("No payment found with id: " + paymentId));
+        bookingAccessService.requirePaymentAccess(payment, currentUser);
         return ResponseEntity.ok(paymentService.getPayment(paymentId));
     }
 

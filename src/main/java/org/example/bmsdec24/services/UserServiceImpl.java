@@ -1,6 +1,7 @@
 package org.example.bmsdec24.services;
 
 import org.example.bmsdec24.exceptions.UserAlreadyPresentException;
+import org.example.bmsdec24.models.Role;
 import org.example.bmsdec24.models.User;
 import org.example.bmsdec24.repos.UserRepository;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -28,6 +29,7 @@ public class UserServiceImpl implements UserService {
         user.setPassword(encodedPassword);
         user.setName(name);
         user.setEmail(email);
+        user.setRole(Role.USER);
 
         return userRepository.save(user);
     }

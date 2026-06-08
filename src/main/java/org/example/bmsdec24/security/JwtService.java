@@ -5,6 +5,7 @@ import io.jsonwebtoken.JwtException;
 import io.jsonwebtoken.Jws;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
+import org.example.bmsdec24.models.Role;
 import org.springframework.stereotype.Service;
 
 import javax.crypto.SecretKey;
@@ -19,6 +20,7 @@ import java.util.Map;
 public class JwtService {
 
     public static final String CLAIM_USER_ID = "uid";
+    public static final String CLAIM_ROLE = "role";
     public static final String CLAIM_TOKEN_TYPE = "ttype";
     public static final String TOKEN_TYPE_ACCESS = "access";
     public static final String TOKEN_TYPE_REFRESH = "refresh";
@@ -31,14 +33,14 @@ public class JwtService {
         this.signingKey = buildKey(jwtProperties.getSecret());
     }
 
-    public String generateAccessToken(int userId, String email) {
+    public String generateAccessToken(int userId, String email, Role role) {
         Duration validity = Duration.ofMinutes(jwtProperties.getAccessTokenValidityMinutes());
-        return generateToken(userId, email, TOKEN_TYPE_ACCESS, validity);
+        return generateToken(userId, email, role, TOKEN_TYPE_ACCESS, validity);
     }
 
-    public String generateRefreshToken(int userId, String email) {
+    public String generateRefreshToken(int userId, String email, Role role) {
         Duration validity = Duration.ofDays(jwtProperties.getRefreshTokenValidityDays());
-        return generateToken(userId, email, TOKEN_TYPE_REFRESH, validity);
+        return generateToken(userId, email, role, TOKEN_TYPE_REFRESH, validity);
     }
 
     public long getAccessTokenValiditySeconds() {
@@ -69,15 +71,31 @@ public class JwtService {
         return null;
     }
 
-    private String generateToken(int userId, String email, String tokenType, Duration validity) {
+    public Role extractRole(Claims claims) {
+        String raw = claims.get(CLAIM_ROLE, String.class);
+        if (raw == null || raw.isBlank()) {
+            return Role.USER;
+        }
+        try {
+            return Role.valueOf(raw);
+        } catch (IllegalArgumentException ex) {
+            return Role.USER;
+        }
+    }
+
+    private String generateToken(int userId, String email, Role role, String tokenType, Duration validity) {
         Instant now = Instant.now();
         Instant expiry = now.plus(validity);
+        Role resolvedRole = role == null ? Role.USER : role;
         return Jwts.builder()
                 .issuer(jwtProperties.getIssuer())
                 .subject(email)
                 .issuedAt(Date.from(now))
                 .expiration(Date.from(expiry))
-                .claims(Map.of(CLAIM_USER_ID, userId, CLAIM_TOKEN_TYPE, tokenType))
+                .claims(Map.of(
+                        CLAIM_USER_ID, userId,
+                        CLAIM_ROLE, resolvedRole.name(),
+                        CLAIM_TOKEN_TYPE, tokenType))
                 .signWith(signingKey, Jwts.SIG.HS256)
                 .compact();
     }
