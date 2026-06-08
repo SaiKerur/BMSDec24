@@ -4,16 +4,7 @@ import java.util.List;
 
 public class BookShowSeatsRequestDto {
 
-    private int userId;
     private List<Integer> showSeatIds;
-
-    public int getUserId() {
-        return userId;
-    }
-
-    public void setUserId(int userId) {
-        this.userId = userId;
-    }
 
     public List<Integer> getShowSeatIds() {
         return showSeatIds;

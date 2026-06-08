@@ -199,6 +199,15 @@ public class BookingServiceImpl implements BookingService {
         return loadBooking(bookingId);
     }
 
+    @Override
+    @Transactional(readOnly = true)
+    public List<Booking> listBookingsForUser(int userId, BookingStatus status) {
+        if (status == null) {
+            return bookingRepository.findAllByUser_IdOrderByCreatedAtDesc(userId);
+        }
+        return bookingRepository.findAllByUser_IdAndStatusOrderByCreatedAtDesc(userId, status);
+    }
+
     @Transactional(isolation = Isolation.READ_COMMITTED)
     @Override
     public int releaseExpiredPendingBookings() {

@@ -3,17 +3,8 @@ package org.example.bmsdec24.dtos;
 import java.util.List;
 
 public class BookSeatsRequestDto {
-    private int userId;
     private int movieId;
     private List<Integer> seatIds;
-
-    public int getUserId() {
-        return userId;
-    }
-
-    public void setUserId(int userId) {
-        this.userId = userId;
-    }
 
     public int getMovieId() {
         return movieId;

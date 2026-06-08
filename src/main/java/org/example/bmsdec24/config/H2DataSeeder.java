@@ -11,6 +11,7 @@ import org.example.bmsdec24.models.SeatType;
 import org.example.bmsdec24.models.Show;
 import org.example.bmsdec24.models.ShowSeat;
 import org.example.bmsdec24.models.Theatre;
+import org.example.bmsdec24.models.Role;
 import org.example.bmsdec24.models.TheatreMovie;
 import org.example.bmsdec24.models.User;
 import org.example.bmsdec24.repos.CityRepository;
@@ -92,10 +93,12 @@ public class H2DataSeeder {
             seedShowSeats(showSeatRepository, phoenixAfternoon, List.of(phoenixA1, phoenixA2),
                     List.of(SeatStatus.AVAILABLE, SeatStatus.AVAILABLE));
 
-            User john = user("John Seed", "john.seed@example.com", passwordEncoder.encode("Password@123"));
-            User amy = user("Amy Seed", "amy.seed@example.com", passwordEncoder.encode("Password@123"));
+            User john = user("John Seed", "john.seed@example.com", passwordEncoder.encode("Password@123"), Role.USER);
+            User amy = user("Amy Seed", "amy.seed@example.com", passwordEncoder.encode("Password@123"), Role.USER);
+            User admin = user("Admin Seed", "admin.seed@example.com", passwordEncoder.encode("Password@123"), Role.ADMIN);
             userRepository.save(john);
             userRepository.save(amy);
+            userRepository.save(admin);
         };
     }
 
@@ -174,11 +177,12 @@ public class H2DataSeeder {
         return calendar.getTime();
     }
 
-    private static User user(String name, String email, String encodedPassword) {
+    private static User user(String name, String email, String encodedPassword, Role role) {
         User user = new User();
         user.setName(name);
         user.setEmail(email);
         user.setPassword(encodedPassword);
+        user.setRole(role);
         return user;
     }
 }

@@ -120,9 +120,11 @@ INSERT INTO theatre_movies (theatre_id, movie_id, theatre_name, movie_name) VALU
   (12, 2,  'Escape Cinemas Express Avenue', 'RomCom Nights');
 
 -- Users (password = BCrypt of 'Password@123')
-INSERT INTO `user` (id, name, email, password, created_at, updated_at) VALUES
-  (1, 'John Seed', 'john.seed@example.com', '$2a$10$4TUqA6m7WkQn3UE6q8xyeecxKMCC7W8e7jQCSNfO8L3v2h4WvW2iC', NOW(), NOW()),
-  (2, 'Amy Seed',  'amy.seed@example.com',  '$2a$10$4TUqA6m7WkQn3UE6q8xyeecxKMCC7W8e7jQCSNfO8L3v2h4WvW2iC', NOW(), NOW());
+INSERT INTO `user` (id, name, email, password, role, created_at, updated_at) VALUES
+  (1, 'John Seed',  'john.seed@example.com',  '$2a$10$4TUqA6m7WkQn3UE6q8xyeecxKMCC7W8e7jQCSNfO8L3v2h4WvW2iC', 'USER',    NOW(), NOW()),
+  (2, 'Amy Seed',   'amy.seed@example.com',   '$2a$10$4TUqA6m7WkQn3UE6q8xyeecxKMCC7W8e7jQCSNfO8L3v2h4WvW2iC', 'USER',    NOW(), NOW()),
+  (3, 'Admin Seed', 'admin.seed@example.com', '$2a$10$4TUqA6m7WkQn3UE6q8xyeecxKMCC7W8e7jQCSNfO8L3v2h4WvW2iC', 'ADMIN',   NOW(), NOW()),
+  (4, 'Partner Seed', 'partner.seed@example.com', '$2a$10$4TUqA6m7WkQn3UE6q8xyeecxKMCC7W8e7jQCSNfO8L3v2h4WvW2iC', 'PARTNER', NOW(), NOW());
 
 -- Theatre seats (seat_status: AVAILABLE | BLOCKED | BOOKED)
 INSERT INTO seats (id, seat_number, seat_type, price, seat_status, theatre_id, booked_by_user_id, theatre_name, booked_by_user_name, created_at, updated_at) VALUES

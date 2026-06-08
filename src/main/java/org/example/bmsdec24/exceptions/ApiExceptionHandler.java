@@ -59,6 +59,12 @@ public class ApiExceptionHandler {
                 .body(ApiErrorDto.of("INVALID_TOKEN", message(ex, "Token is invalid or expired")));
     }
 
+    @ExceptionHandler(AccessDeniedException.class)
+    public ResponseEntity<ApiErrorDto> handleAccessDenied(AccessDeniedException ex) {
+        return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                .body(ApiErrorDto.of("ACCESS_DENIED", message(ex, "You do not have permission to perform this action")));
+    }
+
     @ExceptionHandler(UserAlreadyPresentException.class)
     public ResponseEntity<SignupResponseDto> handleUserAlreadyPresent(UserAlreadyPresentException ex) {
         SignupResponseDto dto = new SignupResponseDto();

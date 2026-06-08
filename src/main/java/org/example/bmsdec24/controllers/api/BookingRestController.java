@@ -3,10 +3,14 @@ package org.example.bmsdec24.controllers.api;
 import org.example.bmsdec24.dtos.BookSeatsRequestDto;
 import org.example.bmsdec24.dtos.BookShowSeatsRequestDto;
 import org.example.bmsdec24.dtos.BookingResponseDto;
+import org.example.bmsdec24.exceptions.AccessDeniedException;
 import org.example.bmsdec24.exceptions.InvalidBookingException;
 import org.example.bmsdec24.exceptions.InvalidRequestException;
 import org.example.bmsdec24.exceptions.InvalidUserException;
 import org.example.bmsdec24.exceptions.SeatsNotAvailableException;
+import org.example.bmsdec24.security.AuthenticatedUser;
+import org.example.bmsdec24.security.BookingAccessService;
+import org.example.bmsdec24.security.SecurityUtils;
 import org.example.bmsdec24.services.BookingService;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -21,36 +25,43 @@ import org.springframework.web.bind.annotation.RestController;
 public class BookingRestController {
 
     private final BookingService bookingService;
+    private final BookingAccessService bookingAccessService;
 
-    public BookingRestController(BookingService bookingService) {
+    public BookingRestController(BookingService bookingService,
+                                 BookingAccessService bookingAccessService) {
         this.bookingService = bookingService;
+        this.bookingAccessService = bookingAccessService;
     }
 
     @GetMapping("/{bookingId}")
     public ResponseEntity<BookingResponseDto> getBooking(@PathVariable int bookingId)
-            throws InvalidRequestException, InvalidBookingException {
+            throws InvalidRequestException, InvalidBookingException, AccessDeniedException {
         if (bookingId <= 0) {
             throw new InvalidRequestException("bookingId must be a positive integer");
         }
+        AuthenticatedUser currentUser = SecurityUtils.requireCurrentUser();
+        bookingAccessService.requireBookingAccess(bookingId, currentUser);
         return ResponseEntity.ok(BookingResponseDto.from(bookingService.getBooking(bookingId)));
     }
 
     @PostMapping("/book")
     public ResponseEntity<BookingResponseDto> bookSeats(@RequestBody BookSeatsRequestDto requestDto)
-            throws InvalidUserException, SeatsNotAvailableException, InvalidRequestException {
+            throws InvalidUserException, SeatsNotAvailableException, InvalidRequestException, AccessDeniedException {
         validateBookRequest(requestDto);
+        AuthenticatedUser currentUser = SecurityUtils.requireCurrentUser();
         return ResponseEntity.ok(BookingResponseDto.from(bookingService.bookSeats(
-                requestDto.getUserId(),
+                currentUser.getUserId(),
                 requestDto.getMovieId(),
                 requestDto.getSeatIds())));
     }
 
     @PostMapping("/book-show-seats")
     public ResponseEntity<BookingResponseDto> bookShowSeats(@RequestBody BookShowSeatsRequestDto requestDto)
-            throws InvalidUserException, SeatsNotAvailableException, InvalidRequestException {
+            throws InvalidUserException, SeatsNotAvailableException, InvalidRequestException, AccessDeniedException {
         validateBookShowSeatsRequest(requestDto);
+        AuthenticatedUser currentUser = SecurityUtils.requireCurrentUser();
         return ResponseEntity.ok(BookingResponseDto.from(bookingService.bookShowSeats(
-                requestDto.getUserId(),
+                currentUser.getUserId(),
                 requestDto.getShowSeatIds())));
     }
 
@@ -60,6 +71,8 @@ public class BookingRestController {
         if (bookingId <= 0) {
             throw new InvalidRequestException("bookingId must be a positive integer");
         }
+        AuthenticatedUser currentUser = SecurityUtils.requireCurrentUser();
+        bookingAccessService.requireBookingAccess(bookingId, currentUser);
         return ResponseEntity.ok(BookingResponseDto.from(bookingService.confirmBooking(bookingId)));
     }
 
@@ -69,20 +82,21 @@ public class BookingRestController {
         if (bookingId <= 0) {
             throw new InvalidRequestException("bookingId must be a positive integer");
         }
+        AuthenticatedUser currentUser = SecurityUtils.requireCurrentUser();
+        bookingAccessService.requireBookingAccess(bookingId, currentUser);
         return ResponseEntity.ok(BookingResponseDto.from(bookingService.cancelBooking(bookingId)));
     }
 
     @PostMapping("/cleanup-expired")
-    public ResponseEntity<Integer> releaseExpiredBookings() {
+    public ResponseEntity<Integer> releaseExpiredBookings() throws AccessDeniedException {
+        AuthenticatedUser currentUser = SecurityUtils.requireCurrentUser();
+        bookingAccessService.requireOperationalRole(currentUser);
         return ResponseEntity.ok(bookingService.releaseExpiredPendingBookings());
     }
 
     private void validateBookRequest(BookSeatsRequestDto requestDto) throws InvalidRequestException {
         if (requestDto == null) {
-            throw new InvalidRequestException("Request body is required with userId, movieId, and seatIds");
-        }
-        if (requestDto.getUserId() <= 0) {
-            throw new InvalidRequestException("userId must be a positive integer");
+            throw new InvalidRequestException("Request body is required with movieId and seatIds");
         }
         if (requestDto.getMovieId() <= 0) {
             throw new InvalidRequestException("movieId must be a positive integer");
@@ -94,10 +108,7 @@ public class BookingRestController {
 
     private void validateBookShowSeatsRequest(BookShowSeatsRequestDto requestDto) throws InvalidRequestException {
         if (requestDto == null) {
-            throw new InvalidRequestException("Request body is required with userId and showSeatIds");
-        }
-        if (requestDto.getUserId() <= 0) {
-            throw new InvalidRequestException("userId must be a positive integer");
+            throw new InvalidRequestException("Request body is required with showSeatIds");
         }
         if (requestDto.getShowSeatIds() == null || requestDto.getShowSeatIds().isEmpty()) {
             throw new InvalidRequestException("showSeatIds must contain at least one show seat id");

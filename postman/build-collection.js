@@ -64,11 +64,6 @@ function folder(name, description, children) {
   return f;
 }
 
-const prerequestBookingUser = [
-  "const u = pm.collectionVariables.get('signedUpUserId') || pm.collectionVariables.get('validUserId');",
-  "pm.variables.set('bookingUserId', u);"
-];
-
 const prerequestUniqueSignup = [
   "const s = Date.now() + '_' + Math.floor(Math.random() * 10000);",
   "const email = 'bms_' + s + '@example.com';",
@@ -436,7 +431,18 @@ const authFolder = folder('Auth', 'JWT login, refresh, and /me. Run seed login o
         "pm.test('Status is 200 OK', function () { pm.response.to.have.status(200); });",
         "const json = pm.response.json();",
         "pm.test('userId present', function () { pm.expect(json.userId).to.exist; });",
-        "pm.test('email present', function () { pm.expect(json.email).to.be.a('string').and.not.empty; });"
+        "pm.test('email present', function () { pm.expect(json.email).to.be.a('string').and.not.empty; });",
+        "pm.test('role present', function () { pm.expect(json.role).to.eql('USER'); });"
+      ]
+    ),
+    item('POST /api/auth/login - admin user (stores adminAccessToken)',
+      req('POST', '/api/auth/login', {
+        auth: 'noauth',
+        body: '{\n  "email": "{{adminEmail}}",\n  "password": "{{password}}"\n}'
+      }),
+      [
+        "pm.test('Status is 200 OK', function () { pm.response.to.have.status(200); });",
+        "pm.collectionVariables.set('adminAccessToken', pm.response.json().accessToken);"
       ]
     )
   ]),
@@ -504,11 +510,70 @@ const authFolder = folder('Auth', 'JWT login, refresh, and /me. Run seed login o
   ])
 ]);
 
-const bookingsFolder = folder('Bookings', 'Seat holds and lifecycle. Run Auth login first. Negative cases use seed data before Book success consumes seats 1,2.', [
+const bookingsFolder = folder('Bookings', 'Seat holds and lifecycle. userId comes from JWT (not request body). Run Auth login first.', [
+  folder('Ownership & authorization', 'Booking access is scoped to owner; ADMIN/PARTNER can access all.', [
+    item('GET /api/users/me/bookings - list my bookings',
+      req('GET', '/api/users/me/bookings'),
+      testStatus(200, 'Status is 200').concat([
+        "pm.test('Returns booking array', function () { pm.expect(pm.response.json()).to.be.an('array'); });"
+      ])
+    ),
+    item('GET /api/users/me/bookings?status=PENDING - filter by status',
+      req('GET', '/api/users/me/bookings?status=PENDING'),
+      testStatus(200, 'Status is 200').concat([
+        "pm.response.json().forEach(function (b) { pm.expect(b.status).to.eql('PENDING'); });"
+      ])
+    ),
+    item('Setup: login as amy (stores amyAccessToken)',
+      req('POST', '/api/auth/login', {
+        auth: 'noauth',
+        body: '{\n  "email": "amy.seed@example.com",\n  "password": "{{password}}"\n}'
+      }),
+      [
+        "pm.test('Status is 200 OK', function () { pm.response.to.have.status(200); });",
+        "pm.collectionVariables.set('amyAccessToken', pm.response.json().accessToken);"
+      ]
+    ),
+    item('GET /api/bookings/{{seedConfirmedBookingId}} - another user booking (403)',
+      req('GET', '/api/bookings/{{seedConfirmedBookingId}}', {
+        auth: 'noauth',
+        authHeader: 'Bearer {{amyAccessToken}}'
+      }),
+      testStatus(403, 'Status is 403 Forbidden')
+    ),
+    item('POST /api/bookings/{{seedConfirmedBookingId}}/cancel - another user booking (403)',
+      req('POST', '/api/bookings/{{seedConfirmedBookingId}}/cancel', {
+        auth: 'noauth',
+        authHeader: 'Bearer {{amyAccessToken}}'
+      }),
+      testStatus(403, 'Status is 403 Forbidden')
+    ),
+    item('Setup: re-login as john (restore accessToken)',
+      req('POST', '/api/auth/login', {
+        auth: 'noauth',
+        body: '{\n  "email": "john.seed@example.com",\n  "password": "{{password}}"\n}'
+      }),
+      [
+        "pm.collectionVariables.set('accessToken', pm.response.json().accessToken);",
+        "pm.collectionVariables.set('refreshToken', pm.response.json().refreshToken);"
+      ]
+    ),
+    item('POST /api/bookings/cleanup-expired - USER role forbidden (403)',
+      req('POST', '/api/bookings/cleanup-expired'),
+      testStatus(403, 'Status is 403 Forbidden')
+    ),
+    item('POST /api/bookings/cleanup-expired - ADMIN allowed',
+      req('POST', '/api/bookings/cleanup-expired', {
+        auth: 'noauth',
+        authHeader: 'Bearer {{adminAccessToken}}'
+      }),
+      testStatus(200, 'Status is 200 OK')
+    )
+  ]),
   folder('Happy path', '', [
     item('POST /api/bookings/book - success (stores bookingId)',
       req('POST', '/api/bookings/book', {
-        body: '{\n  "userId": {{bookingUserId}},\n  "movieId": {{validMovieId}},\n  "seatIds": {{availableSeatIds}}\n}'
+        body: '{\n  "movieId": {{validMovieId}},\n  "seatIds": {{availableSeatIds}}\n}'
       }),
       [
         "pm.test('Status is 200 OK', function () { pm.response.to.have.status(200); });",
@@ -517,8 +582,7 @@ const bookingsFolder = folder('Bookings', 'Seat holds and lifecycle. Run Auth lo
         "pm.test('totalAmount is positive', function () { pm.expect(json.totalAmount).to.be.above(0); });",
         "pm.test('holdExpiresAt set', function () { pm.expect(json.holdExpiresAt).to.exist; });",
         "pm.collectionVariables.set('bookingId', json.id);"
-      ],
-      prerequestBookingUser
+      ]
     ),
     item('GET /api/bookings/{{bookingId}} - fetch booking',
       req('GET', '/api/bookings/{{bookingId}}'),
@@ -538,13 +602,12 @@ const bookingsFolder = folder('Bookings', 'Seat holds and lifecycle. Run Auth lo
     ),
     item('Setup: book seats for cancel flow (stores bookingIdCancel)',
       req('POST', '/api/bookings/book', {
-        body: '{\n  "userId": {{bookingUserId}},\n  "movieId": 1,\n  "seatIds": {{theatre2SeatIds}}\n}'
+        body: '{\n  "movieId": 1,\n  "seatIds": {{theatre2SeatIds}}\n}'
       }),
       [
         "pm.test('Status is 200 OK', function () { pm.response.to.have.status(200); });",
         "pm.collectionVariables.set('bookingIdCancel', pm.response.json().id);"
-      ],
-      prerequestBookingUser
+      ]
     ),
     item('POST /api/bookings/{{bookingIdCancel}}/cancel - success',
       req('POST', '/api/bookings/{{bookingIdCancel}}/cancel'),
@@ -560,17 +623,6 @@ const bookingsFolder = folder('Bookings', 'Seat holds and lifecycle. Run Auth lo
         "pm.test('Status is CANCELLED', function () { pm.expect(pm.response.json().status).to.eql('CANCELLED'); });"
       ]
     ),
-    item('POST /api/bookings/cleanup-expired - run cleanup',
-      req('POST', '/api/bookings/cleanup-expired'),
-      [
-        "pm.test('Status is 200 OK', function () { pm.response.to.have.status(200); });",
-        "pm.test('Body is numeric count', function () {",
-        "    const n = Number(pm.response.text());",
-        "    pm.expect(Number.isNaN(n)).to.eql(false);",
-        "    pm.expect(n).to.be.at.least(0);",
-        "});"
-      ]
-    )
   ]),
   folder('Edge cases - validation', 'Bad request bodies and IDs.', [
     item('POST /api/bookings/book - null body (400)',
@@ -581,27 +633,21 @@ const bookingsFolder = folder('Bookings', 'Seat holds and lifecycle. Run Auth lo
       req('POST', '/api/bookings/book', { body: '{}' }),
       testStatus(400, 'Status is 400 Bad Request')
     ),
-    item('POST /api/bookings/book - userId zero (400)',
-      req('POST', '/api/bookings/book', {
-        body: '{\n  "userId": 0,\n  "movieId": {{validMovieId}},\n  "seatIds": {{availableSeatIds}}\n}'
-      }),
-      testStatus(400, 'Status is 400 Bad Request')
-    ),
     item('POST /api/bookings/book - movieId zero (400)',
       req('POST', '/api/bookings/book', {
-        body: '{\n  "userId": {{validUserId}},\n  "movieId": 0,\n  "seatIds": {{availableSeatIds}}\n}'
+        body: '{\n  "movieId": 0,\n  "seatIds": {{availableSeatIds}}\n}'
       }),
       testStatus(400, 'Status is 400 Bad Request')
     ),
     item('POST /api/bookings/book - empty seatIds (400)',
       req('POST', '/api/bookings/book', {
-        body: '{\n  "userId": {{validUserId}},\n  "movieId": {{validMovieId}},\n  "seatIds": []\n}'
+        body: '{\n  "movieId": {{validMovieId}},\n  "seatIds": []\n}'
       }),
       testStatus(400, 'Status is 400 Bad Request')
     ),
     item('POST /api/bookings/book - missing seatIds field (400)',
       req('POST', '/api/bookings/book', {
-        body: '{\n  "userId": {{validUserId}},\n  "movieId": {{validMovieId}}\n}'
+        body: '{\n  "movieId": {{validMovieId}}\n}'
       }),
       testStatus(400, 'Status is 400 Bad Request')
     ),
@@ -619,45 +665,39 @@ const bookingsFolder = folder('Bookings', 'Seat holds and lifecycle. Run Auth lo
     )
   ]),
   folder('Edge cases - business rules', 'Seat conflicts and booking state (requires seed data).', [
-    item('POST /api/bookings/book - invalid userId (404)',
-      req('POST', '/api/bookings/book', {
-        body: '{\n  "userId": {{invalidUserId}},\n  "movieId": {{validMovieId}},\n  "seatIds": {{availableSeatIds}}\n}'
-      }),
-      testStatus(404, 'Status is 404 Not Found')
-    ),
     item('POST /api/bookings/book - duplicate seat IDs (409)',
       req('POST', '/api/bookings/book', {
-        body: '{\n  "userId": {{validUserId}},\n  "movieId": {{validMovieId}},\n  "seatIds": {{duplicateSeatIds}}\n}'
+        body: '{\n  "movieId": {{validMovieId}},\n  "seatIds": {{duplicateSeatIds}}\n}'
       }),
       testStatus(409, 'Status is 409 Conflict')
     ),
     item('POST /api/bookings/book - seats from different theatres (409)',
       req('POST', '/api/bookings/book', {
-        body: '{\n  "userId": {{validUserId}},\n  "movieId": {{validMovieId}},\n  "seatIds": {{mixedTheatreSeatIds}}\n}'
+        body: '{\n  "movieId": {{validMovieId}},\n  "seatIds": {{mixedTheatreSeatIds}}\n}'
       }),
       testStatus(409, 'Status is 409 Conflict')
     ),
     item('POST /api/bookings/book - movie not running in theatre (409)',
       req('POST', '/api/bookings/book', {
-        body: '{\n  "userId": {{validUserId}},\n  "movieId": {{movieNotInTheatre1}},\n  "seatIds": {{availableSeatIds}}\n}'
+        body: '{\n  "movieId": {{movieNotInTheatre1}},\n  "seatIds": {{availableSeatIds}}\n}'
       }),
       testStatus(409, 'Status is 409 Conflict')
     ),
     item('POST /api/bookings/book - seat already BOOKED (409)',
       req('POST', '/api/bookings/book', {
-        body: '{\n  "userId": {{validUserId}},\n  "movieId": {{validMovieId}},\n  "seatIds": {{bookedSeatIds}}\n}'
+        body: '{\n  "movieId": {{validMovieId}},\n  "seatIds": {{bookedSeatIds}}\n}'
       }),
       testStatus(409, 'Status is 409 Conflict')
     ),
     item('POST /api/bookings/book - seat BLOCKED (409)',
       req('POST', '/api/bookings/book', {
-        body: '{\n  "userId": {{validUserId}},\n  "movieId": {{validMovieId}},\n  "seatIds": {{blockedSeatIds}}\n}'
+        body: '{\n  "movieId": {{validMovieId}},\n  "seatIds": {{blockedSeatIds}}\n}'
       }),
       testStatus(409, 'Status is 409 Conflict')
     ),
     item('POST /api/bookings/book - non-existent seat (409)',
       req('POST', '/api/bookings/book', {
-        body: '{\n  "userId": {{validUserId}},\n  "movieId": {{validMovieId}},\n  "seatIds": [999999]\n}'
+        body: '{\n  "movieId": {{validMovieId}},\n  "seatIds": [999999]\n}'
       }),
       testStatus(409, 'Status is 409 Conflict')
     ),
@@ -679,12 +719,11 @@ const bookingsFolder = folder('Bookings', 'Seat holds and lifecycle. Run Auth lo
     ),
     item('Setup: book for confirm-on-cancelled test',
       req('POST', '/api/bookings/book', {
-        body: '{\n  "userId": {{bookingUserId}},\n  "movieId": 1,\n  "seatIds": [8]\n}'
+        body: '{\n  "movieId": 1,\n  "seatIds": [8]\n}'
       }),
       [
         "pm.collectionVariables.set('bookingIdCancelled', pm.response.json().id);"
-      ],
-      prerequestBookingUser
+      ]
     ),
     item('POST /api/bookings/{{bookingIdCancelled}}/cancel',
       req('POST', '/api/bookings/{{bookingIdCancelled}}/cancel'),
@@ -703,7 +742,7 @@ const bookingsFolder = folder('Bookings', 'Seat holds and lifecycle. Run Auth lo
     folder('Happy path', '', [
       item('POST /api/bookings/book-show-seats - success (stores showBookingId)',
         req('POST', '/api/bookings/book-show-seats', {
-          body: '{\n  "userId": {{bookingUserId}},\n  "showSeatIds": {{availableShowSeatIds}}\n}',
+          body: '{\n  "showSeatIds": {{availableShowSeatIds}}\n}',
           description: 'Hold seats for a specific showtime. Syncs ShowSeat + theatre Seat status.'
         }),
         [
@@ -713,8 +752,7 @@ const bookingsFolder = folder('Bookings', 'Seat holds and lifecycle. Run Auth lo
           "pm.test('Show attached to booking', function () { pm.expect(json.show).to.exist; pm.expect(json.show.id).to.eql(Number(pm.collectionVariables.get('validShowId'))); });",
           "pm.test('holdExpiresAt set', function () { pm.expect(json.holdExpiresAt).to.exist; });",
           "pm.collectionVariables.set('showBookingId', json.id);"
-        ],
-        prerequestBookingUser
+        ]
       ),
       item('GET /api/bookings/{{showBookingId}} - fetch show booking',
         req('GET', '/api/bookings/{{showBookingId}}'),
@@ -732,13 +770,12 @@ const bookingsFolder = folder('Bookings', 'Seat holds and lifecycle. Run Auth lo
       ),
       item('Setup: book show seats for cancel flow (stores showBookingIdCancel)',
         req('POST', '/api/bookings/book-show-seats', {
-          body: '{\n  "userId": {{bookingUserId}},\n  "showSeatIds": {{show2AvailableShowSeatIds}}\n}'
+          body: '{\n  "showSeatIds": {{show2AvailableShowSeatIds}}\n}'
         }),
         [
           "pm.test('Status is 200 OK', function () { pm.response.to.have.status(200); });",
           "pm.collectionVariables.set('showBookingIdCancel', pm.response.json().id);"
-        ],
-        prerequestBookingUser
+        ]
       ),
       item('POST /api/bookings/{{showBookingIdCancel}}/cancel - success',
         req('POST', '/api/bookings/{{showBookingIdCancel}}/cancel'),
@@ -767,53 +804,39 @@ const bookingsFolder = folder('Bookings', 'Seat holds and lifecycle. Run Auth lo
         req('POST', '/api/bookings/book-show-seats', { body: '{}' }),
         testStatus(400, 'Status is 400 Bad Request')
       ),
-      item('POST /api/bookings/book-show-seats - userId zero (400)',
-        req('POST', '/api/bookings/book-show-seats', {
-          body: '{\n  "userId": 0,\n  "showSeatIds": {{availableShowSeatIds}}\n}'
-        }),
-        testStatus(400, 'Status is 400 Bad Request')
-      ),
       item('POST /api/bookings/book-show-seats - empty showSeatIds (400)',
         req('POST', '/api/bookings/book-show-seats', {
-          body: '{\n  "userId": {{validUserId}},\n  "showSeatIds": []\n}'
+          body: '{\n  "showSeatIds": []\n}'
         }),
         testStatus(400, 'Status is 400 Bad Request')
       ),
       item('POST /api/bookings/book-show-seats - missing showSeatIds field (400)',
-        req('POST', '/api/bookings/book-show-seats', {
-          body: '{\n  "userId": {{validUserId}}\n}'
-        }),
+        req('POST', '/api/bookings/book-show-seats', { body: '{}' }),
         testStatus(400, 'Status is 400 Bad Request')
       )
     ]),
     folder('Edge cases - business rules', 'Show-seat conflicts (requires seed data).', [
-      item('POST /api/bookings/book-show-seats - invalid userId (404)',
-        req('POST', '/api/bookings/book-show-seats', {
-          body: '{\n  "userId": {{invalidUserId}},\n  "showSeatIds": {{availableShowSeatIds}}\n}'
-        }),
-        testStatus(404, 'Status is 404 Not Found')
-      ),
       item('POST /api/bookings/book-show-seats - duplicate showSeatIds (409)',
         req('POST', '/api/bookings/book-show-seats', {
-          body: '{\n  "userId": {{validUserId}},\n  "showSeatIds": {{duplicateShowSeatIds}}\n}'
+          body: '{\n  "showSeatIds": {{duplicateShowSeatIds}}\n}'
         }),
         testStatus(409, 'Status is 409 Conflict')
       ),
       item('POST /api/bookings/book-show-seats - showSeats from different shows (409)',
         req('POST', '/api/bookings/book-show-seats', {
-          body: '{\n  "userId": {{validUserId}},\n  "showSeatIds": {{mixedShowShowSeatIds}}\n}'
+          body: '{\n  "showSeatIds": {{mixedShowShowSeatIds}}\n}'
         }),
         testStatus(409, 'Status is 409 Conflict')
       ),
       item('POST /api/bookings/book-show-seats - showSeat BLOCKED in seed (409)',
         req('POST', '/api/bookings/book-show-seats', {
-          body: '{\n  "userId": {{validUserId}},\n  "showSeatIds": {{blockedShowSeatIds}}\n}'
+          body: '{\n  "showSeatIds": {{blockedShowSeatIds}}\n}'
         }),
         testStatus(409, 'Status is 409 Conflict')
       ),
       item('POST /api/bookings/book-show-seats - non-existent showSeat (409)',
         req('POST', '/api/bookings/book-show-seats', {
-          body: '{\n  "userId": {{validUserId}},\n  "showSeatIds": [999999]\n}'
+          body: '{\n  "showSeatIds": [999999]\n}'
         }),
         testStatus(409, 'Status is 409 Conflict')
       ),
@@ -907,12 +930,11 @@ const paymentsFolder = folder('Payments', 'Strategy (STRIPE | RAZORPAY) + mock a
     ),
     item('Setup: book seat 6 for duplicate initiate test',
       req('POST', '/api/bookings/book', {
-        body: '{\n  "userId": {{bookingUserId}},\n  "movieId": 1,\n  "seatIds": [6]\n}'
+        body: '{\n  "movieId": 1,\n  "seatIds": [6]\n}'
       }),
       [
         "pm.collectionVariables.set('bookingIdDupPay', pm.response.json().id);"
-      ],
-      prerequestBookingUser
+      ]
     ),
     item('POST /api/payments/initiate - first attempt (stores paymentIdDup)',
       req('POST', '/api/payments/initiate', {
@@ -935,12 +957,11 @@ const paymentsFolder = folder('Payments', 'Strategy (STRIPE | RAZORPAY) + mock a
     ),
     item('Setup: book seat 7 for Razorpay failure flow',
       req('POST', '/api/bookings/book', {
-        body: '{\n  "userId": {{bookingUserId}},\n  "movieId": 1,\n  "seatIds": [7]\n}'
+        body: '{\n  "movieId": 1,\n  "seatIds": [7]\n}'
       }),
       [
         "pm.collectionVariables.set('bookingIdFail', pm.response.json().id);"
-      ],
-      prerequestBookingUser
+      ]
     ),
     item('POST /api/payments/initiate - Razorpay (stores paymentIdFail)',
       req('POST', '/api/payments/initiate', {
@@ -961,12 +982,11 @@ const paymentsFolder = folder('Payments', 'Strategy (STRIPE | RAZORPAY) + mock a
     ),
     item('Setup: rebook seat 7 for Stripe success=false callback',
       req('POST', '/api/bookings/book', {
-        body: '{\n  "userId": {{bookingUserId}},\n  "movieId": 1,\n  "seatIds": [7]\n}'
+        body: '{\n  "movieId": 1,\n  "seatIds": [7]\n}'
       }),
       [
         "pm.collectionVariables.set('bookingIdStripeFail', pm.response.json().id);"
-      ],
-      prerequestBookingUser
+      ]
     ),
     item('POST /api/payments/initiate - Stripe success=false setup',
       req('POST', '/api/payments/initiate', {
@@ -987,12 +1007,11 @@ const paymentsFolder = folder('Payments', 'Strategy (STRIPE | RAZORPAY) + mock a
     ),
     item('Setup: book seat 8 for Stripe bad-signature test',
       req('POST', '/api/bookings/book', {
-        body: '{\n  "userId": {{bookingUserId}},\n  "movieId": 1,\n  "seatIds": [8]\n}'
+        body: '{\n  "movieId": 1,\n  "seatIds": [8]\n}'
       }),
       [
         "pm.collectionVariables.set('bookingIdBadSig', pm.response.json().id);"
-      ],
-      prerequestBookingUser
+      ]
     ),
     item('POST /api/payments/initiate - Stripe bad-sig setup',
       req('POST', '/api/payments/initiate', {
@@ -1013,12 +1032,11 @@ const paymentsFolder = folder('Payments', 'Strategy (STRIPE | RAZORPAY) + mock a
     ),
     item('Setup: book seat 9 for Razorpay bad-signature test',
       req('POST', '/api/bookings/book', {
-        body: '{\n  "userId": {{bookingUserId}},\n  "movieId": 1,\n  "seatIds": [9]\n}'
+        body: '{\n  "movieId": 1,\n  "seatIds": [9]\n}'
       }),
       [
         "pm.collectionVariables.set('bookingIdRzpBadSig', pm.response.json().id);"
-      ],
-      prerequestBookingUser
+      ]
     ),
     item('POST /api/payments/initiate - Razorpay bad-sig setup',
       req('POST', '/api/payments/initiate', {
@@ -1057,15 +1075,14 @@ const paymentsFolder = folder('Payments', 'Strategy (STRIPE | RAZORPAY) + mock a
     ),
     item('Setup: book seats for Stripe payment (stores bookingIdPay)',
       req('POST', '/api/bookings/book', {
-        body: '{\n  "userId": {{bookingUserId}},\n  "movieId": 1,\n  "seatIds": [8, 9]\n}'
+        body: '{\n  "movieId": 1,\n  "seatIds": [8, 9]\n}'
       }),
       [
         "pm.test('Status is 200 OK', function () { pm.response.to.have.status(200); });",
         "const json = pm.response.json();",
         "pm.test('PENDING', function () { pm.expect(json.status).to.eql('PENDING'); });",
         "pm.collectionVariables.set('bookingIdPay', json.id);"
-      ],
-      prerequestBookingUser
+      ]
     ),
     item('POST /api/payments/initiate - Stripe mock (stores paymentId)',
       req('POST', '/api/payments/initiate', {
@@ -1100,12 +1117,11 @@ const paymentsFolder = folder('Payments', 'Strategy (STRIPE | RAZORPAY) + mock a
     ),
     item('Setup: book seats for Razorpay (stores bookingIdRzp)',
       req('POST', '/api/bookings/book', {
-        body: '{\n  "userId": {{bookingUserId}},\n  "movieId": 1,\n  "seatIds": [6, 7]\n}'
+        body: '{\n  "movieId": 1,\n  "seatIds": [6, 7]\n}'
       }),
       [
         "pm.collectionVariables.set('bookingIdRzp', pm.response.json().id);"
-      ],
-      prerequestBookingUser
+      ]
     ),
     item('POST /api/payments/initiate - Razorpay mock',
       req('POST', '/api/payments/initiate', {
@@ -1145,21 +1161,21 @@ const securityFolder = folder('Security Edge Cases', 'Protected endpoints must r
   item('POST /api/bookings/book-show-seats - missing token (401)',
     req('POST', '/api/bookings/book-show-seats', {
       auth: 'noauth',
-      body: '{\n  "userId": {{validUserId}},\n  "showSeatIds": [1]\n}'
+      body: '{\n  "showSeatIds": [1]\n}'
     }),
     testStatus(401, 'Status is 401 Unauthorized')
   ),
   item('POST /api/bookings/book - missing token (401)',
     req('POST', '/api/bookings/book', {
       auth: 'noauth',
-      body: '{\n  "userId": {{validUserId}},\n  "movieId": 1,\n  "seatIds": [1]\n}'
+      body: '{\n  "movieId": 1,\n  "seatIds": [1]\n}'
     }),
     testStatus(401, 'Status is 401 Unauthorized')
   ),
   item('POST /api/bookings/book - invalid token (401)',
     req('POST', '/api/bookings/book', {
       auth: 'noauth',
-      body: '{\n  "userId": {{validUserId}},\n  "movieId": 1,\n  "seatIds": [1]\n}',
+      body: '{\n  "movieId": 1,\n  "seatIds": [1]\n}',
       headers: [{ key: 'Authorization', value: 'Bearer eyJhbGciOiJIUzI1NiJ9.invalid' }]
     }),
     testStatus(401, 'Status is 401 Unauthorized')
@@ -1174,6 +1190,10 @@ const securityFolder = folder('Security Edge Cases', 'Protected endpoints must r
   ),
   item('POST /api/bookings/cleanup-expired - missing token (401)',
     req('POST', '/api/bookings/cleanup-expired', { auth: 'noauth' }),
+    testStatus(401, 'Status is 401 Unauthorized')
+  ),
+  item('GET /api/users/me/bookings - missing token (401)',
+    req('GET', '/api/users/me/bookings', { auth: 'noauth' }),
     testStatus(401, 'Status is 401 Unauthorized')
   ),
   item('GET /api/payments/providers - missing token (401)',
@@ -1235,7 +1255,9 @@ const collection = {
 - Stripe success: \`signature\` starts with \`whsec_\`
 - Razorpay success: \`signature\` starts with \`rzp_sig_\`
 
-**Seed reference:** Theatre 1 movies 1,2 — seats 1-2 AVAILABLE, 3-4 BOOKED, 5 BLOCKED. Theatre 2 movies 1,3 — seats 6-9 AVAILABLE. Seed users: john.seed@example.com / Password@123`,
+**Auth & ownership:** userId is taken from JWT on book endpoints (do not send userId in body). Booking 1 belongs to john (USER). admin.seed@example.com (ADMIN) and partner.seed@example.com (PARTNER) can access any booking. cleanup-expired requires ADMIN or PARTNER.
+
+**Seed reference:** Theatre 1 movies 1,2 — seats 1-2 AVAILABLE, 3-4 BOOKED, 5 BLOCKED. Theatre 2 movies 1,3 — seats 6-9 AVAILABLE. Seed users: john.seed@example.com / Password@123 (USER), admin.seed@example.com (ADMIN)`,
     schema: 'https://schema.getpostman.com/json/collection/v2.1.0/collection.json'
   },
   auth: {
@@ -1264,6 +1286,9 @@ const collection = {
     { key: 'loginPassword', value: 'Password@123', type: 'string' },
     { key: 'accessToken', value: '', type: 'string' },
     { key: 'refreshToken', value: '', type: 'string' },
+    { key: 'adminEmail', value: 'admin.seed@example.com', type: 'string' },
+    { key: 'adminAccessToken', value: '', type: 'string' },
+    { key: 'amyAccessToken', value: '', type: 'string' },
     { key: 'validMovieId', value: '1', type: 'string' },
     { key: 'movieNotInTheatre1', value: '3', type: 'string' },
     { key: 'availableSeatIds', value: '[1, 2]', type: 'string' },
