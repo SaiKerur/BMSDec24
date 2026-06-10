@@ -2,7 +2,7 @@
   "info": {
     "name": "BMSDec24 API - Full Scenarios",
     "_postman_id": "c5b7f498-52ab-4b85-a5bc-b2f42ce6f5f2",
-    "description": "End-to-end and edge-case coverage for the BMSDec24 API.\n\n**Runner order (recommended):**\n1. Health\n2. Catalog (public — happy path then edge cases)\n3. Shows (Real-time) — public showtimes + availability polling\n4. Users → Signup success → Users edge cases\n5. Auth → Login seed user (or signup + login) → Auth edge cases\n6. Bookings → Edge cases validation → Edge cases business rules → Happy path → Real-time show seats (edge cases then happy path)\n7. Payments → Edge cases validation → Edge cases business rules → Happy path (run in this order; seats 6–9 used in business rules first)\n8. Security Edge Cases\n\n**Prerequisites:** MySQL — run `db/seed_bmsdec24.sql` after first start. H2 profile — demo data loads automatically.\n\n**Real-time shows (H2 seed):**\n- Show 1 @ Orion — Action Blast — showSeats 1-2 AVAILABLE\n- Show 2 @ Orion — RomCom — showSeat 3 AVAILABLE, 4 BLOCKED\n- Show 3 @ Phoenix — Action Blast — showSeats 5-6 AVAILABLE\n- Poll: `GET /api/shows/{showId}/availability?changedAfterEpochMs={serverTime}`\n\n**Payments (mock — `bms.payment.mock-enabled=true`):**\n- Stripe success: `signature` starts with `whsec_`\n- Razorpay success: `signature` starts with `rzp_sig_`\n\n**Auth & ownership:** userId is taken from JWT on book endpoints (do not send userId in body). Booking 1 belongs to john (USER). admin.seed@example.com (ADMIN) and partner.seed@example.com (PARTNER) can access any booking. cleanup-expired requires ADMIN or PARTNER.\n\n**Seed reference:** Theatre 1 movies 1,2 — seats 1-2 AVAILABLE, 3-4 BOOKED, 5 BLOCKED. Theatre 2 movies 1,3 — seats 6-9 AVAILABLE. Seed users: john.seed@example.com / Password@123 (USER), admin.seed@example.com (ADMIN)",
+    "description": "End-to-end and edge-case coverage for the BMSDec24 API.\n\n**Runner order (recommended):**\n1. Health\n2. Catalog (public — happy path then edge cases)\n3. Shows (Real-time) — public showtimes + availability polling\n4. Users → Signup success → Users edge cases\n5. Auth → Login seed user (or signup + login) → Auth edge cases\n6. Bookings → Edge cases validation → Edge cases business rules → Happy path → Real-time show seats (edge cases then happy path)\n7. Payments → Edge cases validation → Edge cases business rules → Happy path (run in this order; seats 6–9 used in business rules first)\n8. Tickets → Edge cases validation → Edge cases business rules → Happy path (requires Payments happy path for auto-issued ticket)\n9. Security Edge Cases\n\n**Prerequisites:** MySQL — run `db/seed_bmsdec24.sql` after first start. H2 profile — demo data loads automatically.\n\n**Real-time shows (H2 seed):**\n- Show 1 @ Orion — Action Blast — showSeats 1-2 AVAILABLE\n- Show 2 @ Orion — RomCom — showSeat 3 AVAILABLE, 4 BLOCKED\n- Show 3 @ Phoenix — Action Blast — showSeats 5-6 AVAILABLE\n- Poll: `GET /api/shows/{showId}/availability?changedAfterEpochMs={serverTime}`\n\n**Payments (mock — `bms.payment.mock-enabled=true`):**\n- Stripe success: `signature` starts with `whsec_`\n- Razorpay success: `signature` starts with `rzp_sig_`\n\n**Auth & ownership:** userId is taken from JWT on book endpoints (do not send userId in body). Booking 1 belongs to john (USER). admin.seed@example.com (ADMIN) and partner.seed@example.com (PARTNER) can access any booking. cleanup-expired requires ADMIN or PARTNER.\n\n**Seed reference:** Theatre 1 movies 1,2 — seats 1-2 AVAILABLE, 3-4 BOOKED, 5 BLOCKED. Theatre 2 movies 1,3 — seats 6-9 AVAILABLE. Seed users: john.seed@example.com / Password@123 (USER), admin.seed@example.com (ADMIN)",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "auth": {
@@ -2159,6 +2159,50 @@
                 }
               },
               "response": []
+            },
+            {
+              "name": "POST /api/auth/login - partner user (stores partnerAccessToken)",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('Status is 200 OK', function () { pm.response.to.have.status(200); });",
+                      "pm.collectionVariables.set('partnerAccessToken', pm.response.json().accessToken);"
+                    ]
+                  }
+                }
+              ],
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/auth/login",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "auth",
+                    "login"
+                  ]
+                },
+                "description": "",
+                "auth": {
+                  "type": "noauth"
+                },
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"email\": \"{{partnerEmail}}\",\n  \"password\": \"{{password}}\"\n}"
+                }
+              },
+              "response": []
             }
           ]
         },
@@ -3242,6 +3286,43 @@
                     "bookings",
                     "{{bookingId}}",
                     "confirm"
+                  ]
+                },
+                "description": ""
+              },
+              "response": []
+            },
+            {
+              "name": "GET /api/bookings/{{bookingId}}/ticket - auto-issued after confirm",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('Status is 200 OK', function () { pm.response.to.have.status(200); });",
+                      "const json = pm.response.json();",
+                      "pm.test('Ticket ISSUED', function () { pm.expect(json.status).to.eql('ISSUED'); });",
+                      "pm.test('Has booking reference', function () { pm.expect(json.bookingReference).to.match(/^BMS-/); });",
+                      "pm.collectionVariables.set('ticketBookingReference', json.bookingReference);",
+                      "pm.collectionVariables.set('ticketQrPayload', json.qrPayload);"
+                    ]
+                  }
+                }
+              ],
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/api/bookings/{{bookingId}}/ticket",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "bookings",
+                    "{{bookingId}}",
+                    "ticket"
                   ]
                 },
                 "description": ""
@@ -6157,7 +6238,15 @@
                       "pm.test('Status is 200 OK', function () { pm.response.to.have.status(200); });",
                       "const json = pm.response.json();",
                       "pm.test('Payment SUCCESS', function () { pm.expect(json.status).to.eql('SUCCESS'); });",
-                      "pm.test('Booking CONFIRMED', function () { pm.expect(json.bookingStatus).to.eql('CONFIRMED'); });"
+                      "pm.test('Booking CONFIRMED', function () { pm.expect(json.bookingStatus).to.eql('CONFIRMED'); });",
+                      "pm.test('Ticket summary included', function () {",
+                      "    pm.expect(json.ticket).to.exist;",
+                      "    pm.expect(json.ticket.bookingReference).to.match(/^BMS-/);",
+                      "    pm.expect(json.ticket.qrPayload).to.be.a('string').and.not.empty;",
+                      "    pm.expect(json.ticket.status).to.eql('ISSUED');",
+                      "    pm.collectionVariables.set('ticketQrPayloadPay', json.ticket.qrPayload);",
+                      "    pm.collectionVariables.set('ticketBookingReferencePay', json.ticket.bookingReference);",
+                      "});"
                     ]
                   }
                 }
@@ -6198,7 +6287,12 @@
                     "type": "text/javascript",
                     "exec": [
                       "pm.test('Status is 200 OK', function () { pm.response.to.have.status(200); });",
-                      "pm.test('Payment SUCCESS', function () { pm.expect(pm.response.json().status).to.eql('SUCCESS'); });"
+                      "pm.test('Payment SUCCESS', function () { pm.expect(pm.response.json().status).to.eql('SUCCESS'); });",
+                      "pm.test('Ticket summary on GET payment', function () {",
+                      "    const t = pm.response.json().ticket;",
+                      "    pm.expect(t).to.exist;",
+                      "    pm.expect(t.bookingReference).to.eql(pm.collectionVariables.get('ticketBookingReferencePay'));",
+                      "});"
                     ]
                   }
                 }
@@ -6433,6 +6527,786 @@
         }
       ],
       "description": "Strategy (STRIPE | RAZORPAY) + mock adapters. Run Auth login first. Run edge-case subfolders before Happy path (seats are consumed in order)."
+    },
+    {
+      "name": "Tickets",
+      "item": [
+        {
+          "name": "Happy path",
+          "item": [
+            {
+              "name": "GET /api/bookings/{{bookingIdPay}}/ticket - auto-issued after Stripe payment",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('Status is 200 OK', function () { pm.response.to.have.status(200); });",
+                      "const json = pm.response.json();",
+                      "pm.test('Ticket ISSUED', function () { pm.expect(json.status).to.eql('ISSUED'); });"
+                    ]
+                  }
+                }
+              ],
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/api/bookings/{{bookingIdPay}}/ticket",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "bookings",
+                    "{{bookingIdPay}}",
+                    "ticket"
+                  ]
+                },
+                "description": ""
+              },
+              "response": []
+            },
+            {
+              "name": "POST /api/bookings/{{bookingIdPay}}/issue-ticket - idempotent re-issue",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('Status is 200 OK', function () { pm.response.to.have.status(200); });",
+                      "pm.test('Same booking reference', function () {",
+                      "    pm.expect(pm.response.json().bookingReference).to.eql(pm.collectionVariables.get('ticketBookingReferencePay'));",
+                      "});"
+                    ]
+                  }
+                }
+              ],
+              "request": {
+                "method": "POST",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/api/bookings/{{bookingIdPay}}/issue-ticket",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "bookings",
+                    "{{bookingIdPay}}",
+                    "issue-ticket"
+                  ]
+                },
+                "description": ""
+              },
+              "response": []
+            },
+            {
+              "name": "POST /api/tickets/validate - gate scan with qrPayload (PARTNER)",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('Status is 200 OK', function () { pm.response.to.have.status(200); });",
+                      "const json = pm.response.json();",
+                      "pm.test('Ticket accepted', function () { pm.expect(json.valid).to.be.true; pm.expect(json.status).to.eql('VALIDATED'); });"
+                    ]
+                  }
+                }
+              ],
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{partnerAccessToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/tickets/validate",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "tickets",
+                    "validate"
+                  ]
+                },
+                "description": "Theatre gate scans QR code. Marks ticket VALIDATED on first successful scan.",
+                "auth": {
+                  "type": "noauth"
+                },
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"qrPayload\": \"{{ticketQrPayloadPay}}\"\n}"
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "POST /api/tickets/validate - duplicate scan (already used)",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('Status is 200 OK', function () { pm.response.to.have.status(200); });",
+                      "const json = pm.response.json();",
+                      "pm.test('Already used', function () { pm.expect(json.valid).to.be.false; pm.expect(json.message).to.include('already used'); });"
+                    ]
+                  }
+                }
+              ],
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{partnerAccessToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/tickets/validate",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "tickets",
+                    "validate"
+                  ]
+                },
+                "description": "",
+                "auth": {
+                  "type": "noauth"
+                },
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"qrPayload\": \"{{ticketQrPayloadPay}}\"\n}"
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "POST /api/tickets/validate - gate scan with bookingReference (ADMIN)",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('Status is 200 OK', function () { pm.response.to.have.status(200); });",
+                      "pm.test('Ticket accepted', function () { pm.expect(pm.response.json().valid).to.be.true; });"
+                    ]
+                  }
+                }
+              ],
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{adminAccessToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/tickets/validate",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "tickets",
+                    "validate"
+                  ]
+                },
+                "description": "Alternative lookup by human-readable BMS- reference from confirm flow.",
+                "auth": {
+                  "type": "noauth"
+                },
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"bookingReference\": \"{{ticketBookingReference}}\"\n}"
+                }
+              },
+              "response": []
+            }
+          ],
+          "description": "Issue, fetch, and validate tickets after confirmed bookings."
+        },
+        {
+          "name": "Edge cases - validation",
+          "item": [
+            {
+              "name": "POST /api/tickets/validate - null body (400)",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('Status is 400 Bad Request', function () {",
+                      "    pm.response.to.have.status(400);",
+                      "});"
+                    ]
+                  }
+                }
+              ],
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{partnerAccessToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/tickets/validate",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "tickets",
+                    "validate"
+                  ]
+                },
+                "description": "",
+                "auth": {
+                  "type": "noauth"
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "POST /api/tickets/validate - empty body (400)",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('Status is 400 Bad Request', function () {",
+                      "    pm.response.to.have.status(400);",
+                      "});"
+                    ]
+                  }
+                }
+              ],
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{partnerAccessToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/tickets/validate",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "tickets",
+                    "validate"
+                  ]
+                },
+                "description": "",
+                "auth": {
+                  "type": "noauth"
+                },
+                "body": {
+                  "mode": "raw",
+                  "raw": "{}"
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "POST /api/tickets/validate - USER role forbidden (403)",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('Status is 403 Forbidden', function () {",
+                      "    pm.response.to.have.status(403);",
+                      "});"
+                    ]
+                  }
+                }
+              ],
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/tickets/validate",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "tickets",
+                    "validate"
+                  ]
+                },
+                "description": "",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"bookingReference\": \"BMS-NOTREAL\"\n}"
+                }
+              },
+              "response": []
+            }
+          ],
+          "description": "Malformed ticket validation requests."
+        },
+        {
+          "name": "Edge cases - business rules",
+          "item": [
+            {
+              "name": "GET /api/bookings/{{bookingIdCancel}}/ticket - no ticket for cancelled booking (404)",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('Status is 404 Not Found', function () {",
+                      "    pm.response.to.have.status(404);",
+                      "});"
+                    ]
+                  }
+                }
+              ],
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/api/bookings/{{bookingIdCancel}}/ticket",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "bookings",
+                    "{{bookingIdCancel}}",
+                    "ticket"
+                  ]
+                },
+                "description": ""
+              },
+              "response": []
+            },
+            {
+              "name": "Setup: book show seat for pending ticket test",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.collectionVariables.set('ticketPendingBookingId', pm.response.json().id);"
+                    ]
+                  }
+                }
+              ],
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/bookings/book-show-seats",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "bookings",
+                    "book-show-seats"
+                  ]
+                },
+                "description": "Show 1 seat 1 is AVAILABLE in seed; keeps booking PENDING for issue-ticket rejection test.",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"showSeatIds\": [1]\n}"
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "POST /api/bookings/{{ticketPendingBookingId}}/issue-ticket - PENDING booking (409)",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('Status is 409 Conflict', function () {",
+                      "    pm.response.to.have.status(409);",
+                      "});"
+                    ]
+                  }
+                }
+              ],
+              "request": {
+                "method": "POST",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/api/bookings/{{ticketPendingBookingId}}/issue-ticket",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "bookings",
+                    "{{ticketPendingBookingId}}",
+                    "issue-ticket"
+                  ]
+                },
+                "description": ""
+              },
+              "response": []
+            },
+            {
+              "name": "POST /api/tickets/validate - unknown booking reference (404)",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('Status is 404 Not Found', function () {",
+                      "    pm.response.to.have.status(404);",
+                      "});"
+                    ]
+                  }
+                }
+              ],
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{partnerAccessToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/tickets/validate",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "tickets",
+                    "validate"
+                  ]
+                },
+                "description": "",
+                "auth": {
+                  "type": "noauth"
+                },
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"bookingReference\": \"BMS-XXXXXX\"\n}"
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "GET /api/bookings/0/ticket (400)",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('Status is 400 Bad Request', function () {",
+                      "    pm.response.to.have.status(400);",
+                      "});"
+                    ]
+                  }
+                }
+              ],
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/api/bookings/0/ticket",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "bookings",
+                    "0",
+                    "ticket"
+                  ]
+                },
+                "description": ""
+              },
+              "response": []
+            },
+            {
+              "name": "POST /api/bookings/0/issue-ticket (400)",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('Status is 400 Bad Request', function () {",
+                      "    pm.response.to.have.status(400);",
+                      "});"
+                    ]
+                  }
+                }
+              ],
+              "request": {
+                "method": "POST",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/api/bookings/0/issue-ticket",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "bookings",
+                    "0",
+                    "issue-ticket"
+                  ]
+                },
+                "description": ""
+              },
+              "response": []
+            },
+            {
+              "name": "GET /api/bookings/999999/ticket (404)",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('Status is 404 Not Found', function () {",
+                      "    pm.response.to.have.status(404);",
+                      "});"
+                    ]
+                  }
+                }
+              ],
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/api/bookings/999999/ticket",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "bookings",
+                    "999999",
+                    "ticket"
+                  ]
+                },
+                "description": ""
+              },
+              "response": []
+            },
+            {
+              "name": "Setup: confirm show booking for revoke test",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('Status is 200 OK', function () {",
+                      "    pm.response.to.have.status(200);",
+                      "});"
+                    ]
+                  }
+                }
+              ],
+              "request": {
+                "method": "POST",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/api/bookings/{{ticketPendingBookingId}}/confirm",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "bookings",
+                    "{{ticketPendingBookingId}}",
+                    "confirm"
+                  ]
+                },
+                "description": ""
+              },
+              "response": []
+            },
+            {
+              "name": "GET /api/bookings/{{ticketPendingBookingId}}/ticket - stores revoke test ref",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('Status is 200 OK', function () { pm.response.to.have.status(200); });",
+                      "pm.collectionVariables.set('ticketRevokeReference', pm.response.json().bookingReference);"
+                    ]
+                  }
+                }
+              ],
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/api/bookings/{{ticketPendingBookingId}}/ticket",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "bookings",
+                    "{{ticketPendingBookingId}}",
+                    "ticket"
+                  ]
+                },
+                "description": ""
+              },
+              "response": []
+            },
+            {
+              "name": "POST /api/bookings/{{ticketPendingBookingId}}/cancel - revokes ticket",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('Status is 200 OK', function () {",
+                      "    pm.response.to.have.status(200);",
+                      "});"
+                    ]
+                  }
+                }
+              ],
+              "request": {
+                "method": "POST",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/api/bookings/{{ticketPendingBookingId}}/cancel",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "bookings",
+                    "{{ticketPendingBookingId}}",
+                    "cancel"
+                  ]
+                },
+                "description": ""
+              },
+              "response": []
+            },
+            {
+              "name": "POST /api/tickets/validate - revoked ticket (409)",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('Status is 409 Conflict', function () {",
+                      "    pm.response.to.have.status(409);",
+                      "});"
+                    ]
+                  }
+                }
+              ],
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{partnerAccessToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/tickets/validate",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "tickets",
+                    "validate"
+                  ]
+                },
+                "description": "",
+                "auth": {
+                  "type": "noauth"
+                },
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"bookingReference\": \"{{ticketRevokeReference}}\"\n}"
+                }
+              },
+              "response": []
+            }
+          ],
+          "description": "Ticket lifecycle and not-found scenarios."
+        }
+      ],
+      "description": "Order confirmation tickets with QR payload and gate validation. Run Auth (partner login) and Bookings/Payments happy paths first."
     },
     {
       "name": "Security Edge Cases",
@@ -7007,6 +7881,16 @@
       "type": "string"
     },
     {
+      "key": "partnerEmail",
+      "value": "partner.seed@example.com",
+      "type": "string"
+    },
+    {
+      "key": "partnerAccessToken",
+      "value": "",
+      "type": "string"
+    },
+    {
       "key": "amyAccessToken",
       "value": "",
       "type": "string"
@@ -7203,6 +8087,36 @@
     },
     {
       "key": "gatewayOrderIdRazorpay",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "ticketBookingReference",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "ticketQrPayload",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "ticketQrPayloadPay",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "ticketBookingReferencePay",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "ticketPendingBookingId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "ticketRevokeReference",
       "value": "",
       "type": "string"
     }

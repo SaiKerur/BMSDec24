@@ -2,6 +2,7 @@ package org.example.bmsdec24.services;
 
 import org.example.bmsdec24.exceptions.BookingAlreadyProcessedException;
 import org.example.bmsdec24.exceptions.InvalidBookingException;
+import org.example.bmsdec24.exceptions.InvalidTicketException;
 import org.example.bmsdec24.exceptions.InvalidUserException;
 import org.example.bmsdec24.exceptions.SeatsNotAvailableException;
 import org.example.bmsdec24.models.Booking;
@@ -40,19 +41,22 @@ public class BookingServiceImpl implements BookingService {
     private final SeatRepository seatRepository;
     private final ShowSeatRepository showSeatRepository;
     private final BookingRepository bookingRepository;
+    private final TicketService ticketService;
 
     public BookingServiceImpl(UserRepository userRepository,
                               MovieRepository movieRepository,
                               TheatreRepository theatreRepository,
                               SeatRepository seatRepository,
                               ShowSeatRepository showSeatRepository,
-                              BookingRepository bookingRepository) {
+                              BookingRepository bookingRepository,
+                              TicketService ticketService) {
         this.userRepository = userRepository;
         this.movieRepository = movieRepository;
         this.theatreRepository = theatreRepository;
         this.seatRepository = seatRepository;
         this.showSeatRepository = showSeatRepository;
         this.bookingRepository = bookingRepository;
+        this.ticketService = ticketService;
     }
 
     @Transactional(isolation = Isolation.READ_COMMITTED)
@@ -176,6 +180,7 @@ public class BookingServiceImpl implements BookingService {
         booking.setStatus(BookingStatus.CONFIRMED);
         booking.setHoldExpiresAt(null);
         Booking saved = bookingRepository.save(booking);
+        issueTicketSafely(saved.getId());
         return bookingRepository.findDetailedById(saved.getId()).orElse(saved);
     }
 
@@ -191,6 +196,7 @@ public class BookingServiceImpl implements BookingService {
         booking.setStatus(BookingStatus.CANCELLED);
         booking.setHoldExpiresAt(null);
         Booking saved = bookingRepository.save(booking);
+        revokeTicketSafely(saved.getId());
         return bookingRepository.findDetailedById(saved.getId()).orElse(saved);
     }
 
@@ -348,5 +354,16 @@ public class BookingServiceImpl implements BookingService {
 
     private boolean isSeatAvailable(Seat seat) {
         return seat.getSeatStatus() == null || seat.getSeatStatus() == SeatStatus.AVAILABLE;
+    }
+
+    private void issueTicketSafely(int bookingId) {
+        try {
+            ticketService.issueTicket(bookingId);
+        } catch (InvalidTicketException ignored) {
+        }
+    }
+
+    private void revokeTicketSafely(int bookingId) {
+        ticketService.revokeTicketForBooking(bookingId);
     }
 }

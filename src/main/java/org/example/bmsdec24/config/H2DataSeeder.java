@@ -96,9 +96,11 @@ public class H2DataSeeder {
             User john = user("John Seed", "john.seed@example.com", passwordEncoder.encode("Password@123"), Role.USER);
             User amy = user("Amy Seed", "amy.seed@example.com", passwordEncoder.encode("Password@123"), Role.USER);
             User admin = user("Admin Seed", "admin.seed@example.com", passwordEncoder.encode("Password@123"), Role.ADMIN);
+            User partner = user("Partner Seed", "partner.seed@example.com", passwordEncoder.encode("Password@123"), Role.PARTNER);
             userRepository.save(john);
             userRepository.save(amy);
             userRepository.save(admin);
+            userRepository.save(partner);
         };
     }
 
