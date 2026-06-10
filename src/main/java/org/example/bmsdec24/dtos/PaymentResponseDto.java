@@ -19,6 +19,7 @@ public class PaymentResponseDto {
     private String paymentReference;
     private String failureReason;
     private BookingStatus bookingStatus;
+    private TicketSummaryDto ticket;
 
     public static PaymentResponseDto from(Payment payment) {
         PaymentResponseDto dto = new PaymentResponseDto();
@@ -139,5 +140,13 @@ public class PaymentResponseDto {
 
     public void setBookingStatus(BookingStatus bookingStatus) {
         this.bookingStatus = bookingStatus;
+    }
+
+    public TicketSummaryDto getTicket() {
+        return ticket;
+    }
+
+    public void setTicket(TicketSummaryDto ticket) {
+        this.ticket = ticket;
     }
 }

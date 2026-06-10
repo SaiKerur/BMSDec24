@@ -3,12 +3,15 @@ package org.example.bmsdec24.services;
 import org.example.bmsdec24.config.PaymentProperties;
 import org.example.bmsdec24.dtos.PaymentProviderOptionDto;
 import org.example.bmsdec24.dtos.PaymentResponseDto;
+import org.example.bmsdec24.dtos.TicketSummaryDto;
 import org.example.bmsdec24.exceptions.BookingAlreadyProcessedException;
 import org.example.bmsdec24.exceptions.PaymentGatewayException;
 import org.example.bmsdec24.exceptions.InvalidBookingException;
 import org.example.bmsdec24.exceptions.InvalidPaymentException;
+import org.example.bmsdec24.exceptions.InvalidTicketException;
 import org.example.bmsdec24.exceptions.PaymentAlreadyProcessedException;
 import org.example.bmsdec24.exceptions.SeatsNotAvailableException;
+import org.example.bmsdec24.exceptions.TicketNotFoundException;
 import org.example.bmsdec24.models.Booking;
 import org.example.bmsdec24.models.BookingStatus;
 import org.example.bmsdec24.models.Payment;
@@ -39,17 +42,20 @@ public class PaymentServiceImpl implements PaymentService {
     private final BookingRepository bookingRepository;
     private final PaymentGatewayFactory paymentGatewayFactory;
     private final BookingService bookingService;
+    private final TicketService ticketService;
     private final PaymentProperties paymentProperties;
 
     public PaymentServiceImpl(PaymentRepository paymentRepository,
                               BookingRepository bookingRepository,
                               PaymentGatewayFactory paymentGatewayFactory,
                               BookingService bookingService,
+                              TicketService ticketService,
                               PaymentProperties paymentProperties) {
         this.paymentRepository = paymentRepository;
         this.bookingRepository = bookingRepository;
         this.paymentGatewayFactory = paymentGatewayFactory;
         this.bookingService = bookingService;
+        this.ticketService = ticketService;
         this.paymentProperties = paymentProperties;
     }
 
@@ -163,7 +169,7 @@ public class PaymentServiceImpl implements PaymentService {
             settleAsFailure(payment, booking, verification.getFailureReason());
         }
 
-        return PaymentResponseDto.from(paymentRepository.save(payment));
+        return toPaymentResponse(paymentRepository.save(payment));
     }
 
     @Transactional(readOnly = true)
@@ -171,12 +177,13 @@ public class PaymentServiceImpl implements PaymentService {
     public PaymentResponseDto getPayment(int paymentId) throws InvalidPaymentException {
         Payment payment = paymentRepository.findDetailedById(paymentId)
                 .orElseThrow(() -> new InvalidPaymentException("No payment found with id: " + paymentId));
-        return PaymentResponseDto.from(payment);
+        return toPaymentResponse(payment);
     }
 
     private void settleAsSuccess(Payment payment, Booking booking) {
         try {
             bookingService.confirmBooking(booking.getId());
+            issueTicketSafely(booking.getId());
             payment.setStatus(PaymentStatus.SUCCESS);
             payment.setFailureReason(null);
             payment.setBooking(reloadBooking(booking.getId()));
@@ -204,5 +211,27 @@ public class PaymentServiceImpl implements PaymentService {
 
     private Booking reloadBooking(int bookingId) {
         return bookingRepository.findDetailedById(bookingId).orElse(null);
+    }
+
+    private void issueTicketSafely(int bookingId) {
+        try {
+            ticketService.issueTicket(bookingId);
+        } catch (InvalidTicketException ignored) {
+        }
+    }
+
+    private PaymentResponseDto toPaymentResponse(Payment payment) {
+        PaymentResponseDto response = PaymentResponseDto.from(payment);
+        if (payment.getStatus() == PaymentStatus.SUCCESS && payment.getBooking() != null) {
+            attachTicketSummary(response, payment.getBooking().getId());
+        }
+        return response;
+    }
+
+    private void attachTicketSummary(PaymentResponseDto response, int bookingId) {
+        try {
+            response.setTicket(TicketSummaryDto.from(ticketService.getTicketForBooking(bookingId)));
+        } catch (TicketNotFoundException ignored) {
+        }
     }
 }

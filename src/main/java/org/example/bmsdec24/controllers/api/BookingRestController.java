@@ -3,15 +3,19 @@ package org.example.bmsdec24.controllers.api;
 import org.example.bmsdec24.dtos.BookSeatsRequestDto;
 import org.example.bmsdec24.dtos.BookShowSeatsRequestDto;
 import org.example.bmsdec24.dtos.BookingResponseDto;
+import org.example.bmsdec24.dtos.TicketResponseDto;
 import org.example.bmsdec24.exceptions.AccessDeniedException;
 import org.example.bmsdec24.exceptions.InvalidBookingException;
 import org.example.bmsdec24.exceptions.InvalidRequestException;
+import org.example.bmsdec24.exceptions.InvalidTicketException;
 import org.example.bmsdec24.exceptions.InvalidUserException;
 import org.example.bmsdec24.exceptions.SeatsNotAvailableException;
+import org.example.bmsdec24.exceptions.TicketNotFoundException;
 import org.example.bmsdec24.security.AuthenticatedUser;
 import org.example.bmsdec24.security.BookingAccessService;
 import org.example.bmsdec24.security.SecurityUtils;
 import org.example.bmsdec24.services.BookingService;
+import org.example.bmsdec24.services.TicketService;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -26,11 +30,14 @@ public class BookingRestController {
 
     private final BookingService bookingService;
     private final BookingAccessService bookingAccessService;
+    private final TicketService ticketService;
 
     public BookingRestController(BookingService bookingService,
-                                 BookingAccessService bookingAccessService) {
+                                 BookingAccessService bookingAccessService,
+                                 TicketService ticketService) {
         this.bookingService = bookingService;
         this.bookingAccessService = bookingAccessService;
+        this.ticketService = ticketService;
     }
 
     @GetMapping("/{bookingId}")
@@ -85,6 +92,28 @@ public class BookingRestController {
         AuthenticatedUser currentUser = SecurityUtils.requireCurrentUser();
         bookingAccessService.requireBookingAccess(bookingId, currentUser);
         return ResponseEntity.ok(BookingResponseDto.from(bookingService.cancelBooking(bookingId)));
+    }
+
+    @GetMapping("/{bookingId}/ticket")
+    public ResponseEntity<TicketResponseDto> getTicket(@PathVariable int bookingId)
+            throws InvalidRequestException, TicketNotFoundException, AccessDeniedException {
+        if (bookingId <= 0) {
+            throw new InvalidRequestException("bookingId must be a positive integer");
+        }
+        AuthenticatedUser currentUser = SecurityUtils.requireCurrentUser();
+        bookingAccessService.requireBookingAccess(bookingId, currentUser);
+        return ResponseEntity.ok(ticketService.getTicketForBooking(bookingId));
+    }
+
+    @PostMapping("/{bookingId}/issue-ticket")
+    public ResponseEntity<TicketResponseDto> issueTicket(@PathVariable int bookingId)
+            throws InvalidRequestException, InvalidTicketException, AccessDeniedException {
+        if (bookingId <= 0) {
+            throw new InvalidRequestException("bookingId must be a positive integer");
+        }
+        AuthenticatedUser currentUser = SecurityUtils.requireCurrentUser();
+        bookingAccessService.requireBookingAccess(bookingId, currentUser);
+        return ResponseEntity.ok(ticketService.issueTicket(bookingId));
     }
 
     @PostMapping("/cleanup-expired")

@@ -81,6 +81,18 @@ public class ApiExceptionHandler {
         return ResponseEntity.status(status).body(ApiErrorDto.of(code, msg));
     }
 
+    @ExceptionHandler(TicketNotFoundException.class)
+    public ResponseEntity<ApiErrorDto> handleTicketNotFound(TicketNotFoundException ex) {
+        return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                .body(ApiErrorDto.of("TICKET_NOT_FOUND", message(ex, "Ticket not found")));
+    }
+
+    @ExceptionHandler(InvalidTicketException.class)
+    public ResponseEntity<ApiErrorDto> handleInvalidTicket(InvalidTicketException ex) {
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(ApiErrorDto.of("INVALID_TICKET", message(ex, "Ticket request is invalid")));
+    }
+
     @ExceptionHandler(PaymentAlreadyProcessedException.class)
     public ResponseEntity<ApiErrorDto> handlePaymentAlreadyProcessed(PaymentAlreadyProcessedException ex) {
         return ResponseEntity.status(HttpStatus.CONFLICT)
