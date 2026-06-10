@@ -569,15 +569,21 @@ const bookingsFolder = folder('Bookings', 'Seat holds and lifecycle. userId come
       ]
     ),
     item('POST /api/bookings/cleanup-expired - USER role forbidden (403)',
-      req('POST', '/api/bookings/cleanup-expired'),
+      req('POST', '/api/bookings/cleanup-expired', {
+        description: 'Manual override only. Production holds are released automatically every 2 minutes by BookingHoldExpiryScheduler.'
+      }),
       testStatus(403, 'Status is 403 Forbidden')
     ),
-    item('POST /api/bookings/cleanup-expired - ADMIN allowed',
+    item('POST /api/bookings/cleanup-expired - ADMIN allowed (manual override)',
       req('POST', '/api/bookings/cleanup-expired', {
         auth: 'noauth',
-        authHeader: 'Bearer {{adminAccessToken}}'
+        authHeader: 'Bearer {{adminAccessToken}}',
+        description: 'Admin/partner can force-release expired PENDING holds immediately. Scheduler also runs every bms.booking.hold-expiry-interval-ms (default 120000).'
       }),
-      testStatus(200, 'Status is 200 OK')
+      [
+        "pm.test('Status is 200 OK', function () { pm.response.to.have.status(200); });",
+        "pm.test('Returns count of released holds', function () { pm.expect(pm.response.json()).to.be.a('number'); });"
+      ]
     )
   ]),
   folder('Happy path', '', [
@@ -603,11 +609,34 @@ const bookingsFolder = folder('Bookings', 'Seat holds and lifecycle. userId come
         "});"
       ]
     ),
+    item('GET /api/bookings/{{bookingId}}/events - audit log after hold (HELD)',
+      req('GET', '/api/bookings/{{bookingId}}/events'),
+      [
+        "pm.test('Status is 200 OK', function () { pm.response.to.have.status(200); });",
+        "const events = pm.response.json();",
+        "pm.test('Returns event array', function () { pm.expect(events).to.be.an('array').that.is.not.empty; });",
+        "pm.test('Latest event is HELD', function () { pm.expect(events[events.length - 1].eventType).to.eql('HELD'); });",
+        "pm.test('Events belong to booking', function () {",
+        "    events.forEach(function (e) { pm.expect(e.bookingId).to.eql(Number(pm.collectionVariables.get('bookingId'))); });",
+        "});"
+      ]
+    ),
     item('POST /api/bookings/{{bookingId}}/confirm - success',
       req('POST', '/api/bookings/{{bookingId}}/confirm'),
       [
         "pm.test('Status is 200 OK', function () { pm.response.to.have.status(200); });",
         "pm.test('Status is CONFIRMED', function () { pm.expect(pm.response.json().status).to.eql('CONFIRMED'); });"
+      ]
+    ),
+    item('GET /api/bookings/{{bookingId}}/events - audit log after confirm (HELD, CONFIRMED)',
+      req('GET', '/api/bookings/{{bookingId}}/events'),
+      [
+        "pm.test('Status is 200 OK', function () { pm.response.to.have.status(200); });",
+        "const types = pm.response.json().map(function (e) { return e.eventType; });",
+        "pm.test('Contains HELD and CONFIRMED', function () {",
+        "    pm.expect(types).to.include('HELD');",
+        "    pm.expect(types).to.include('CONFIRMED');",
+        "});"
       ]
     ),
     item('GET /api/bookings/{{bookingId}}/ticket - auto-issued after confirm',
@@ -1367,7 +1396,14 @@ const securityFolder = folder('Security Edge Cases', 'Protected endpoints must r
     testStatus(401, 'Status is 401 Unauthorized')
   ),
   item('POST /api/bookings/cleanup-expired - missing token (401)',
-    req('POST', '/api/bookings/cleanup-expired', { auth: 'noauth' }),
+    req('POST', '/api/bookings/cleanup-expired', {
+      auth: 'noauth',
+      description: 'Manual hold cleanup requires ADMIN/PARTNER JWT. Automated scheduler does not use this endpoint.'
+    }),
+    testStatus(401, 'Status is 401 Unauthorized')
+  ),
+  item('GET /api/bookings/1/events - missing token (401)',
+    req('GET', '/api/bookings/1/events', { auth: 'noauth' }),
     testStatus(401, 'Status is 401 Unauthorized')
   ),
   item('GET /api/users/me/bookings - missing token (401)',
@@ -1434,7 +1470,9 @@ const collection = {
 - Stripe success: \`signature\` starts with \`whsec_\`
 - Razorpay success: \`signature\` starts with \`rzp_sig_\`
 
-**Auth & ownership:** userId is taken from JWT on book endpoints (do not send userId in body). Booking 1 belongs to john (USER). admin.seed@example.com (ADMIN) and partner.seed@example.com (PARTNER) can access any booking. cleanup-expired requires ADMIN or PARTNER.
+**Auth & ownership:** userId is taken from JWT on book endpoints (do not send userId in body). Booking 1 belongs to john (USER). admin.seed@example.com (ADMIN) and partner.seed@example.com (PARTNER) can access any booking. cleanup-expired requires ADMIN or PARTNER (manual override; production uses automated scheduler).
+
+**Hold expiry (automated):** BookingHoldExpiryScheduler runs every \`bms.booking.hold-expiry-interval-ms\` (default 120000 = 2 min). It releases PENDING bookings past \`holdExpiresAt\`, syncs Seat + ShowSeat to AVAILABLE, and records BookingEvent EXPIRED. Audit trail: \`GET /api/bookings/{bookingId}/events\` (HELD, EXPIRED, CONFIRMED, CANCELLED).
 
 **Seed reference:** Theatre 1 movies 1,2 — seats 1-2 AVAILABLE, 3-4 BOOKED, 5 BLOCKED. Theatre 2 movies 1,3 — seats 6-9 AVAILABLE. Seed users: john.seed@example.com / Password@123 (USER), admin.seed@example.com (ADMIN)`,
     schema: 'https://schema.getpostman.com/json/collection/v2.1.0/collection.json'

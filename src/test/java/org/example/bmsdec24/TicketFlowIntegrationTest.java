@@ -13,6 +13,7 @@ import org.example.bmsdec24.models.Theatre;
 import org.example.bmsdec24.models.TheatreMovie;
 import org.example.bmsdec24.models.TicketStatus;
 import org.example.bmsdec24.models.User;
+import org.example.bmsdec24.repos.BookingEventRepository;
 import org.example.bmsdec24.repos.BookingRepository;
 import org.example.bmsdec24.repos.CityRepository;
 import org.example.bmsdec24.repos.MovieRepository;
@@ -71,6 +72,9 @@ class TicketFlowIntegrationTest {
     private BookingRepository bookingRepository;
 
     @Autowired
+    private BookingEventRepository bookingEventRepository;
+
+    @Autowired
     private PaymentRepository paymentRepository;
 
     @Autowired
@@ -88,6 +92,7 @@ class TicketFlowIntegrationTest {
     void setUp() {
         ticketRepository.deleteAll();
         paymentRepository.deleteAll();
+        bookingEventRepository.deleteAll();
         bookingRepository.deleteAll();
         seatRepository.deleteAll();
         theatreRepository.deleteAll();

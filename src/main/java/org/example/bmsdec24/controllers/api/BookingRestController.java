@@ -2,6 +2,7 @@ package org.example.bmsdec24.controllers.api;
 
 import org.example.bmsdec24.dtos.BookSeatsRequestDto;
 import org.example.bmsdec24.dtos.BookShowSeatsRequestDto;
+import org.example.bmsdec24.dtos.BookingEventResponseDto;
 import org.example.bmsdec24.dtos.BookingResponseDto;
 import org.example.bmsdec24.dtos.TicketResponseDto;
 import org.example.bmsdec24.exceptions.AccessDeniedException;
@@ -14,6 +15,7 @@ import org.example.bmsdec24.exceptions.TicketNotFoundException;
 import org.example.bmsdec24.security.AuthenticatedUser;
 import org.example.bmsdec24.security.BookingAccessService;
 import org.example.bmsdec24.security.SecurityUtils;
+import org.example.bmsdec24.services.BookingEventService;
 import org.example.bmsdec24.services.BookingService;
 import org.example.bmsdec24.services.TicketService;
 import org.springframework.http.ResponseEntity;
@@ -24,6 +26,8 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.util.List;
+
 @RestController
 @RequestMapping("/api/bookings")
 public class BookingRestController {
@@ -31,13 +35,16 @@ public class BookingRestController {
     private final BookingService bookingService;
     private final BookingAccessService bookingAccessService;
     private final TicketService ticketService;
+    private final BookingEventService bookingEventService;
 
     public BookingRestController(BookingService bookingService,
                                  BookingAccessService bookingAccessService,
-                                 TicketService ticketService) {
+                                 TicketService ticketService,
+                                 BookingEventService bookingEventService) {
         this.bookingService = bookingService;
         this.bookingAccessService = bookingAccessService;
         this.ticketService = ticketService;
+        this.bookingEventService = bookingEventService;
     }
 
     @GetMapping("/{bookingId}")
@@ -114,6 +121,19 @@ public class BookingRestController {
         AuthenticatedUser currentUser = SecurityUtils.requireCurrentUser();
         bookingAccessService.requireBookingAccess(bookingId, currentUser);
         return ResponseEntity.ok(ticketService.issueTicket(bookingId));
+    }
+
+    @GetMapping("/{bookingId}/events")
+    public ResponseEntity<List<BookingEventResponseDto>> listBookingEvents(@PathVariable int bookingId)
+            throws InvalidRequestException, InvalidBookingException, AccessDeniedException {
+        if (bookingId <= 0) {
+            throw new InvalidRequestException("bookingId must be a positive integer");
+        }
+        AuthenticatedUser currentUser = SecurityUtils.requireCurrentUser();
+        bookingAccessService.requireBookingAccess(bookingId, currentUser);
+        bookingService.getBooking(bookingId);
+        return ResponseEntity.ok(BookingEventResponseDto.fromList(
+                bookingEventService.listEventsForBooking(bookingId)));
     }
 
     @PostMapping("/cleanup-expired")

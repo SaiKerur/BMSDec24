@@ -6,6 +6,7 @@ import org.example.bmsdec24.exceptions.InvalidTicketException;
 import org.example.bmsdec24.exceptions.InvalidUserException;
 import org.example.bmsdec24.exceptions.SeatsNotAvailableException;
 import org.example.bmsdec24.models.Booking;
+import org.example.bmsdec24.models.BookingEventType;
 import org.example.bmsdec24.models.BookingStatus;
 import org.example.bmsdec24.models.Movie;
 import org.example.bmsdec24.models.Seat;
@@ -42,6 +43,7 @@ public class BookingServiceImpl implements BookingService {
     private final ShowSeatRepository showSeatRepository;
     private final BookingRepository bookingRepository;
     private final TicketService ticketService;
+    private final BookingEventService bookingEventService;
 
     public BookingServiceImpl(UserRepository userRepository,
                               MovieRepository movieRepository,
@@ -49,7 +51,8 @@ public class BookingServiceImpl implements BookingService {
                               SeatRepository seatRepository,
                               ShowSeatRepository showSeatRepository,
                               BookingRepository bookingRepository,
-                              TicketService ticketService) {
+                              TicketService ticketService,
+                              BookingEventService bookingEventService) {
         this.userRepository = userRepository;
         this.movieRepository = movieRepository;
         this.theatreRepository = theatreRepository;
@@ -57,6 +60,7 @@ public class BookingServiceImpl implements BookingService {
         this.showSeatRepository = showSeatRepository;
         this.bookingRepository = bookingRepository;
         this.ticketService = ticketService;
+        this.bookingEventService = bookingEventService;
     }
 
     @Transactional(isolation = Isolation.READ_COMMITTED)
@@ -91,6 +95,7 @@ public class BookingServiceImpl implements BookingService {
         booking.setHoldExpiresAt(Date.from(new Date().toInstant().plus(BOOKING_HOLD_DURATION)));
 
         Booking saved = bookingRepository.save(booking);
+        bookingEventService.recordEvent(saved, BookingEventType.HELD);
         return bookingRepository.findDetailedById(saved.getId()).orElse(saved);
     }
 
@@ -134,6 +139,7 @@ public class BookingServiceImpl implements BookingService {
         booking.setHoldExpiresAt(Date.from(new Date().toInstant().plus(BOOKING_HOLD_DURATION)));
 
         Booking saved = bookingRepository.save(booking);
+        bookingEventService.recordEvent(saved, BookingEventType.HELD);
         return bookingRepository.findDetailedById(saved.getId()).orElse(saved);
     }
 
@@ -180,6 +186,7 @@ public class BookingServiceImpl implements BookingService {
         booking.setStatus(BookingStatus.CONFIRMED);
         booking.setHoldExpiresAt(null);
         Booking saved = bookingRepository.save(booking);
+        bookingEventService.recordEvent(saved, BookingEventType.CONFIRMED);
         issueTicketSafely(saved.getId());
         return bookingRepository.findDetailedById(saved.getId()).orElse(saved);
     }
@@ -196,6 +203,7 @@ public class BookingServiceImpl implements BookingService {
         booking.setStatus(BookingStatus.CANCELLED);
         booking.setHoldExpiresAt(null);
         Booking saved = bookingRepository.save(booking);
+        bookingEventService.recordEvent(saved, BookingEventType.CANCELLED);
         revokeTicketSafely(saved.getId());
         return bookingRepository.findDetailedById(saved.getId()).orElse(saved);
     }
@@ -313,7 +321,8 @@ public class BookingServiceImpl implements BookingService {
         releaseShowSeats(booking);
         booking.setStatus(BookingStatus.CANCELLED);
         booking.setHoldExpiresAt(null);
-        bookingRepository.save(booking);
+        Booking saved = bookingRepository.save(booking);
+        bookingEventService.recordEvent(saved, BookingEventType.EXPIRED);
     }
 
     private void confirmShowSeats(Booking booking) {
