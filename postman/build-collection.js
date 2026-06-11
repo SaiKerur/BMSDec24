@@ -131,6 +131,69 @@ const catalogFolder = folder('Catalog', 'Public discovery APIs (no JWT required)
       req('GET', '/api/catalog/movies?genre=ROM_COM', { auth: 'noauth' }),
       testStatus(200, 'Status is 200')
     ),
+    item('GET /api/catalog/movies/1',
+      req('GET', '/api/catalog/movies/1', { auth: 'noauth', description: 'Rich movie detail for Action Blast.' }),
+      testStatus(200, 'Status is 200').concat([
+        "const movie = pm.response.json();",
+        "pm.test('Movie has catalog fields', function () {",
+        "    pm.expect(movie).to.have.property('posterUrl');",
+        "    pm.expect(movie).to.have.property('trailerUrl');",
+        "    pm.expect(movie).to.have.property('language');",
+        "    pm.expect(movie).to.have.property('runtime');",
+        "    pm.expect(movie).to.have.property('certification');",
+        "    pm.expect(movie.cast).to.be.an('array');",
+        "    pm.expect(movie).to.have.property('synopsis');",
+        "    pm.expect(movie).to.have.property('releaseDate');",
+        "    pm.expect(movie.status).to.eql('NOW_SHOWING');",
+        "});"
+      ])
+    ),
+    item('GET /api/catalog/movies/search?q=Action',
+      req('GET', '/api/catalog/movies/search?q=Action', { auth: 'noauth' }),
+      testStatus(200, 'Status is 200').concat([
+        "pm.test('Search returns matches', function () {",
+        "    const movies = pm.response.json();",
+        "    pm.expect(movies).to.be.an('array').that.is.not.empty;",
+        "    pm.expect(movies.some(m => m.title.includes('Action'))).to.be.true;",
+        "});"
+      ])
+    ),
+    item('GET /api/catalog/movies/search?q=Alex',
+      req('GET', '/api/catalog/movies/search?q=Alex', { auth: 'noauth', description: 'Search by cast member name.' }),
+      testStatus(200, 'Status is 200').concat([
+        "pm.test('Cast search finds Action Blast', function () {",
+        "    pm.expect(pm.response.json().some(m => m.title === 'Action Blast')).to.be.true;",
+        "});"
+      ])
+    ),
+    item('GET /api/catalog/movies/now-showing',
+      req('GET', '/api/catalog/movies/now-showing', { auth: 'noauth' }),
+      testStatus(200, 'Status is 200').concat([
+        "pm.test('All movies are NOW_SHOWING', function () {",
+        "    pm.response.json().forEach(m => pm.expect(m.status).to.eql('NOW_SHOWING'));",
+        "});"
+      ])
+    ),
+    item('GET /api/catalog/movies/now-showing?cityId=1',
+      req('GET', '/api/catalog/movies/now-showing?cityId=1', { auth: 'noauth', description: 'Now showing in Bengaluru (city 1).' }),
+      testStatus(200, 'Status is 200').concat([
+        "pm.test('City filter returns now-showing movies', function () {",
+        "    const movies = pm.response.json();",
+        "    pm.expect(movies).to.be.an('array').that.is.not.empty;",
+        "    movies.forEach(m => pm.expect(m.status).to.eql('NOW_SHOWING'));",
+        "});"
+      ])
+    ),
+    item('GET /api/catalog/movies/coming-soon',
+      req('GET', '/api/catalog/movies/coming-soon', { auth: 'noauth' }),
+      testStatus(200, 'Status is 200').concat([
+        "pm.test('All movies are COMING_SOON', function () {",
+        "    const movies = pm.response.json();",
+        "    pm.expect(movies).to.be.an('array').that.is.not.empty;",
+        "    movies.forEach(m => pm.expect(m.status).to.eql('COMING_SOON'));",
+        "});"
+      ])
+    ),
     item('GET /api/catalog/theatres/1/seats',
       req('GET', '/api/catalog/theatres/1/seats', { auth: 'noauth' }),
       testStatus(200, 'Status is 200').concat([
@@ -178,6 +241,26 @@ const catalogFolder = folder('Catalog', 'Public discovery APIs (no JWT required)
     item('GET /api/catalog/movies?genre=INVALID (400)',
       req('GET', '/api/catalog/movies?genre=INVALID', { auth: 'noauth' }),
       testStatus(400, 'Status is 400 Bad Request')
+    ),
+    item('GET /api/catalog/movies/0 (400)',
+      req('GET', '/api/catalog/movies/0', { auth: 'noauth' }),
+      testStatus(400, 'Status is 400 Bad Request')
+    ),
+    item('GET /api/catalog/movies/99999 (404)',
+      req('GET', '/api/catalog/movies/99999', { auth: 'noauth' }),
+      testStatus(404, 'Status is 404 Not Found')
+    ),
+    item('GET /api/catalog/movies/search?q= (400)',
+      req('GET', '/api/catalog/movies/search?q=', { auth: 'noauth' }),
+      testStatus(400, 'Status is 400 Bad Request')
+    ),
+    item('GET /api/catalog/movies/now-showing?cityId=0 (400)',
+      req('GET', '/api/catalog/movies/now-showing?cityId=0', { auth: 'noauth' }),
+      testStatus(400, 'Status is 400 Bad Request')
+    ),
+    item('GET /api/catalog/movies/now-showing?cityId=99999 (404)',
+      req('GET', '/api/catalog/movies/now-showing?cityId=99999', { auth: 'noauth' }),
+      testStatus(404, 'Status is 404 Not Found')
     ),
     item('GET /api/catalog/cities - works without JWT (public)',
       req('GET', '/api/catalog/cities', { auth: 'noauth' }),
@@ -1769,7 +1852,7 @@ const collection = {
 - \`GET /api/refunds/{id}\` — refund details (owner, ADMIN, or PARTNER)
 - Bookings without a show default to 100% refund
 
-**Seed reference:** Theatre 1 movies 1,2 — seats 1-2 AVAILABLE, 3-4 BOOKED, 5 BLOCKED. Theatre 2 movies 1,3 — seats 6-9 AVAILABLE. Show 3 @ Phoenix starts in ~30h (50% refund). Show 1 @ Orion starts in ~2h (0% refund). Seed users: john.seed@example.com / Password@123 (USER), admin.seed@example.com (ADMIN)`,
+**Seed reference:** Movies 1-3 NOW_SHOWING with rich catalog fields; movies 4-5 COMING_SOON (Galactic Dawn, Monsoon Letters). Theatre 1 movies 1,2 — seats 1-2 AVAILABLE, 3-4 BOOKED, 5 BLOCKED. Theatre 2 movies 1,3 — seats 6-9 AVAILABLE. Show 3 @ Phoenix starts in ~30h (50% refund). Show 1 @ Orion starts in ~2h (0% refund). Seed users: john.seed@example.com / Password@123 (USER), admin.seed@example.com (ADMIN)`,
     schema: 'https://schema.getpostman.com/json/collection/v2.1.0/collection.json'
   },
   auth: {

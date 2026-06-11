@@ -5,8 +5,10 @@ import org.example.bmsdec24.dtos.MovieResponseDto;
 import org.example.bmsdec24.dtos.SeatResponseDto;
 import org.example.bmsdec24.dtos.TheatreDetailResponseDto;
 import org.example.bmsdec24.dtos.TheatreResponseDto;
+import org.example.bmsdec24.exceptions.InvalidRequestException;
 import org.example.bmsdec24.exceptions.ResourceNotFoundException;
 import org.example.bmsdec24.models.Genre;
+import org.example.bmsdec24.models.MovieStatus;
 import org.example.bmsdec24.models.Theatre;
 import org.example.bmsdec24.repos.CityRepository;
 import org.example.bmsdec24.repos.MovieRepository;
@@ -69,6 +71,42 @@ public class CatalogServiceImpl implements CatalogService {
     }
 
     @Override
+    public MovieResponseDto getMovie(int movieId) throws ResourceNotFoundException {
+        return MovieResponseDto.from(requireMovie(movieId));
+    }
+
+    @Override
+    public List<MovieResponseDto> searchMovies(String query) throws InvalidRequestException {
+        if (query == null || query.isBlank()) {
+            throw new InvalidRequestException("Search query q must not be blank");
+        }
+        return movieRepository.search(query.trim()).stream()
+                .map(MovieResponseDto::from)
+                .toList();
+    }
+
+    @Override
+    public List<MovieResponseDto> listNowShowing(Integer cityId) throws ResourceNotFoundException {
+        if (cityId == null) {
+            return movieRepository.findAllByStatus(MovieStatus.NOW_SHOWING).stream()
+                    .map(MovieResponseDto::from)
+                    .toList();
+        }
+        requireCity(cityId);
+        return movieRepository.findDistinctByStatusAndTheatreMovies_Theatre_City_Id(MovieStatus.NOW_SHOWING, cityId)
+                .stream()
+                .map(MovieResponseDto::from)
+                .toList();
+    }
+
+    @Override
+    public List<MovieResponseDto> listComingSoon() {
+        return movieRepository.findAllByStatus(MovieStatus.COMING_SOON).stream()
+                .map(MovieResponseDto::from)
+                .toList();
+    }
+
+    @Override
     public List<SeatResponseDto> listSeatsByTheatre(int theatreId) throws ResourceNotFoundException {
         requireTheatre(theatreId);
         return seatRepository.findAllByTheatre_Id(theatreId).stream()
@@ -86,5 +124,13 @@ public class CatalogServiceImpl implements CatalogService {
         if (!theatreRepository.existsById(theatreId)) {
             throw new ResourceNotFoundException("No theatre found with id: " + theatreId);
         }
+    }
+
+    private org.example.bmsdec24.models.Movie requireMovie(int movieId) throws ResourceNotFoundException {
+        var movie = movieRepository.findById(movieId);
+        if (movie.isEmpty()) {
+            throw new ResourceNotFoundException("No movie found with id: " + movieId);
+        }
+        return movie.get();
     }
 }

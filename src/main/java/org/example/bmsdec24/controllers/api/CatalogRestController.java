@@ -52,6 +52,33 @@ public class CatalogRestController {
         return ResponseEntity.ok(catalogService.listMovies(genre));
     }
 
+    @GetMapping("/movies/search")
+    public ResponseEntity<List<MovieResponseDto>> searchMovies(@RequestParam("q") String query)
+            throws InvalidRequestException {
+        return ResponseEntity.ok(catalogService.searchMovies(query));
+    }
+
+    @GetMapping("/movies/now-showing")
+    public ResponseEntity<List<MovieResponseDto>> listNowShowing(@RequestParam(required = false) Integer cityId)
+            throws ResourceNotFoundException, InvalidRequestException {
+        if (cityId != null) {
+            validatePositiveId(cityId, "cityId");
+        }
+        return ResponseEntity.ok(catalogService.listNowShowing(cityId));
+    }
+
+    @GetMapping("/movies/coming-soon")
+    public ResponseEntity<List<MovieResponseDto>> listComingSoon() {
+        return ResponseEntity.ok(catalogService.listComingSoon());
+    }
+
+    @GetMapping("/movies/{movieId}")
+    public ResponseEntity<MovieResponseDto> getMovie(@PathVariable int movieId)
+            throws ResourceNotFoundException, InvalidRequestException {
+        validatePositiveId(movieId, "movieId");
+        return ResponseEntity.ok(catalogService.getMovie(movieId));
+    }
+
     @GetMapping("/theatres/{theatreId}/seats")
     public ResponseEntity<List<SeatResponseDto>> listSeatsByTheatre(@PathVariable int theatreId)
             throws ResourceNotFoundException, InvalidRequestException {

@@ -5,6 +5,7 @@ import org.example.bmsdec24.models.City;
 import org.example.bmsdec24.models.Feature;
 import org.example.bmsdec24.models.Genre;
 import org.example.bmsdec24.models.Movie;
+import org.example.bmsdec24.models.MovieStatus;
 import org.example.bmsdec24.models.Screen;
 import org.example.bmsdec24.models.Seat;
 import org.example.bmsdec24.models.SeatStatus;
@@ -59,9 +60,46 @@ public class H2DataSeeder {
             City bengaluru = cityRepository.save(city("Bengaluru"));
             City mumbai = cityRepository.save(city("Mumbai"));
 
-            Movie actionBlast = movieRepository.save(movie("Action Blast", Genre.ACTION));
-            Movie romCom = movieRepository.save(movie("RomCom Nights", Genre.ROM_COM));
-            Movie comedy = movieRepository.save(movie("Laugh Out Loud", Genre.COMEDY));
+            Movie actionBlast = movieRepository.save(movie(
+                    "Action Blast", Genre.ACTION, MovieStatus.NOW_SHOWING,
+                    "https://cdn.example.com/posters/action-blast.jpg",
+                    "https://cdn.example.com/trailers/action-blast.mp4",
+                    "English", 142, "UA",
+                    List.of("Alex Rivera", "Mia Chen", "Vikram Rao"),
+                    "A rogue agent races against time to stop a global cyber-attack.",
+                    daysFromNow(-14)));
+            Movie romCom = movieRepository.save(movie(
+                    "RomCom Nights", Genre.ROM_COM, MovieStatus.NOW_SHOWING,
+                    "https://cdn.example.com/posters/romcom-nights.jpg",
+                    "https://cdn.example.com/trailers/romcom-nights.mp4",
+                    "Hindi", 118, "U",
+                    List.of("Priya Sharma", "Arjun Mehta"),
+                    "Two strangers keep meeting on late-night metro rides and fall in love.",
+                    daysFromNow(-7)));
+            Movie comedy = movieRepository.save(movie(
+                    "Laugh Out Loud", Genre.COMEDY, MovieStatus.NOW_SHOWING,
+                    "https://cdn.example.com/posters/laugh-out-loud.jpg",
+                    "https://cdn.example.com/trailers/laugh-out-loud.mp4",
+                    "English", 105, "U",
+                    List.of("Sam Brooks", "Nina Patel"),
+                    "A stand-up comic's disastrous wedding week turns into his best material yet.",
+                    daysFromNow(-21)));
+            Movie futureBlockbuster = movieRepository.save(movie(
+                    "Galactic Dawn", Genre.ACTION, MovieStatus.COMING_SOON,
+                    "https://cdn.example.com/posters/galactic-dawn.jpg",
+                    "https://cdn.example.com/trailers/galactic-dawn-teaser.mp4",
+                    "English", 156, "UA",
+                    List.of("Jordan Lee", "Aisha Khan"),
+                    "Humanity's first interstellar colony faces an unexpected threat from deep space.",
+                    daysFromNow(30)));
+            Movie futureRomance = movieRepository.save(movie(
+                    "Monsoon Letters", Genre.ROM_COM, MovieStatus.COMING_SOON,
+                    "https://cdn.example.com/posters/monsoon-letters.jpg",
+                    "https://cdn.example.com/trailers/monsoon-letters-teaser.mp4",
+                    "Hindi", 128, "U",
+                    List.of("Rhea Das", "Kabir Joshi"),
+                    "Old love letters resurface during a rainy season in Kochi.",
+                    daysFromNow(45)));
 
             Theatre orion = theatreRepository.save(theatre("Orion PVR", "Dr Rajkumar Road, Bengaluru", bengaluru));
             Theatre phoenix = theatreRepository.save(theatre("PVR Phoenix", "Lower Parel, Mumbai", mumbai));
@@ -143,10 +181,22 @@ public class H2DataSeeder {
         return city;
     }
 
-    private static Movie movie(String title, Genre genre) {
+    private static Movie movie(String title, Genre genre, MovieStatus status,
+                               String posterUrl, String trailerUrl, String language,
+                               int runtime, String certification, List<String> cast,
+                               String synopsis, java.util.Date releaseDate) {
         Movie movie = new Movie();
         movie.setTitle(title);
         movie.setGenre(genre);
+        movie.setStatus(status);
+        movie.setPosterUrl(posterUrl);
+        movie.setTrailerUrl(trailerUrl);
+        movie.setLanguage(language);
+        movie.setRuntime(runtime);
+        movie.setCertification(certification);
+        movie.setCastMembers(cast);
+        movie.setSynopsis(synopsis);
+        movie.setReleaseDate(releaseDate);
         return movie;
     }
 
@@ -199,6 +249,12 @@ public class H2DataSeeder {
     private static java.util.Date hoursFromNow(int hours) {
         Calendar calendar = Calendar.getInstance();
         calendar.add(Calendar.HOUR_OF_DAY, hours);
+        return calendar.getTime();
+    }
+
+    private static java.util.Date daysFromNow(int days) {
+        Calendar calendar = Calendar.getInstance();
+        calendar.add(Calendar.DAY_OF_MONTH, days);
         return calendar.getTime();
     }
 
