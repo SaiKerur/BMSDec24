@@ -105,6 +105,12 @@ public class ApiExceptionHandler {
                 .body(ApiErrorDto.of("PAYMENT_GATEWAY_ERROR", message(ex, "Payment gateway call failed")));
     }
 
+    @ExceptionHandler(InvalidWebhookSignatureException.class)
+    public ResponseEntity<ApiErrorDto> handleInvalidWebhookSignature(InvalidWebhookSignatureException ex) {
+        return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                .body(ApiErrorDto.of("INVALID_WEBHOOK_SIGNATURE", message(ex, "Webhook signature is invalid")));
+    }
+
     @ExceptionHandler(IllegalArgumentException.class)
     public ResponseEntity<ApiErrorDto> handleIllegalArgument(IllegalArgumentException ex) {
         return ResponseEntity.status(HttpStatus.BAD_REQUEST)

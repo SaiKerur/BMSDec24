@@ -15,4 +15,7 @@ public interface PaymentRepository extends JpaRepository<Payment, Integer> {
     Optional<Payment> findDetailedById(int paymentId);
 
     Optional<Payment> findFirstByBooking_IdAndStatus(int bookingId, PaymentStatus status);
+
+    @EntityGraph(attributePaths = {"booking", "booking.seats", "booking.user", "booking.theatre", "booking.movie"})
+    Optional<Payment> findDetailedByGatewayOrderId(String gatewayOrderId);
 }
