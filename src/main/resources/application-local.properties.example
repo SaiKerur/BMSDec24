@@ -6,13 +6,18 @@
 #   publishable-key -> pk_test_...
 #
 # Get Razorpay TEST keys: https://dashboard.razorpay.com/app/keys (enable Test Mode)
-#   key-id     -> rzp_test_...
-#   key-secret -> (shown once when generated)
+#   key-id          -> rzp_test_...
+#   key-secret      -> (shown once when generated)
+#   webhook-secret  -> from Razorpay Dashboard → Webhooks → secret
+#
+# Stripe webhook secret: Stripe Dashboard → Developers → Webhooks → signing secret (whsec_...)
 
 bms.payment.mock-enabled=false
 
 # Example shape only — paste your own values from the dashboards:
 # bms.payment.stripe.secret-key=sk_test_51AbC...
 # bms.payment.stripe.publishable-key=pk_test_51AbC...
+# bms.payment.stripe.webhook-secret=whsec_...
 # bms.payment.razorpay.key-id=rzp_test_abc123
 # bms.payment.razorpay.key-secret=your_secret_here
+# bms.payment.razorpay.webhook-secret=your_webhook_secret_here

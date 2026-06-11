@@ -1250,6 +1250,122 @@ const paymentsFolder = folder('Payments', 'Strategy (STRIPE | RAZORPAY) + mock a
       ]
     )
   ]),
+  folder('Webhooks (server-to-server)', 'Gateway webhooks — no JWT. Uses Stripe-Signature / X-Razorpay-Signature headers. Run after Edge cases business rules.', [
+    folder('Edge cases', 'Invalid webhook signatures (public endpoints).', [
+      item('POST /api/payments/webhooks/stripe - invalid signature (401)',
+        req('POST', '/api/payments/webhooks/stripe', {
+          auth: 'noauth',
+          headers: [{ key: 'Stripe-Signature', value: 'invalid_not_whsec_prefix' }],
+          body: '{\n  "id": "evt_mock_stripe_bad_sig",\n  "type": "payment_intent.succeeded",\n  "data": {\n    "object": {\n      "id": "pi_mock_invalid",\n      "status": "succeeded"\n    }\n  }\n}'
+        }),
+        testStatus(401, 'Status is 401 Unauthorized')
+      ),
+      item('POST /api/payments/webhooks/razorpay - invalid signature (401)',
+        req('POST', '/api/payments/webhooks/razorpay', {
+          auth: 'noauth',
+          headers: [
+            { key: 'X-Razorpay-Signature', value: 'invalid_not_rzp_sig_prefix' },
+            { key: 'X-Razorpay-Event-Id', value: 'evt_mock_rzp_bad_sig' }
+          ],
+          body: '{\n  "event": "payment.captured",\n  "payload": {\n    "payment": {\n      "entity": {\n        "id": "pay_mock_bad",\n        "order_id": "order_mock_bad",\n        "status": "captured"\n      }\n    }\n  }\n}'
+        }),
+        testStatus(401, 'Status is 401 Unauthorized')
+      ),
+      item('POST /api/payments/webhooks/stripe - empty body (400)',
+        req('POST', '/api/payments/webhooks/stripe', {
+          auth: 'noauth',
+          headers: [{ key: 'Stripe-Signature', value: '{{stripeMockSignature}}' }],
+          body: ''
+        }),
+        testStatus(400, 'Status is 400 Bad Request')
+      )
+    ]),
+    folder('Happy path', 'Confirm/cancel bookings via provider webhooks (idempotent retries).', [
+      item('Setup: book seat 6 for Stripe webhook (stores bookingIdWebhookStripe)',
+        req('POST', '/api/bookings/book', {
+          body: '{\n  "movieId": 1,\n  "seatIds": [6]\n}'
+        }),
+        [
+          "pm.test('Status is 200 OK', function () { pm.response.to.have.status(200); });",
+          "pm.collectionVariables.set('bookingIdWebhookStripe', pm.response.json().id);"
+        ]
+      ),
+      item('POST /api/payments/initiate - Stripe for webhook (stores paymentIdWebhookStripe)',
+        req('POST', '/api/payments/initiate', {
+          body: '{\n  "bookingId": {{bookingIdWebhookStripe}},\n  "provider": "STRIPE"\n}'
+        }),
+        [
+          "pm.test('Status is 201 Created', function () { pm.response.to.have.status(201); });",
+          "const json = pm.response.json();",
+          "pm.collectionVariables.set('paymentIdWebhookStripe', json.paymentId);",
+          "pm.collectionVariables.set('gatewayOrderIdWebhookStripe', json.gatewayOrderId);",
+          "pm.collectionVariables.set('stripeWebhookEventId', 'evt_mock_stripe_webhook_001');"
+        ]
+      ),
+      item('POST /api/payments/webhooks/stripe - payment_intent.succeeded',
+        req('POST', '/api/payments/webhooks/stripe', {
+          auth: 'noauth',
+          headers: [{ key: 'Stripe-Signature', value: '{{stripeMockSignature}}' }],
+          body: '{\n  "id": "{{stripeWebhookEventId}}",\n  "type": "payment_intent.succeeded",\n  "data": {\n    "object": {\n      "id": "{{gatewayOrderIdWebhookStripe}}",\n      "status": "succeeded"\n    }\n  }\n}'
+        }),
+        [
+          "pm.test('Status is 200 OK', function () { pm.response.to.have.status(200); });",
+          "const json = pm.response.json();",
+          "pm.test('Outcome PROCESSED', function () { pm.expect(json.outcome).to.eql('PROCESSED'); });",
+          "pm.test('Payment SUCCESS', function () { pm.expect(json.paymentStatus).to.eql('SUCCESS'); });",
+          "pm.test('Booking CONFIRMED', function () { pm.expect(json.bookingStatus).to.eql('CONFIRMED'); });"
+        ]
+      ),
+      item('POST /api/payments/webhooks/stripe - idempotent retry (ALREADY_PROCESSED)',
+        req('POST', '/api/payments/webhooks/stripe', {
+          auth: 'noauth',
+          headers: [{ key: 'Stripe-Signature', value: '{{stripeMockSignature}}' }],
+          body: '{\n  "id": "{{stripeWebhookEventId}}",\n  "type": "payment_intent.succeeded",\n  "data": {\n    "object": {\n      "id": "{{gatewayOrderIdWebhookStripe}}",\n      "status": "succeeded"\n    }\n  }\n}'
+        }),
+        [
+          "pm.test('Status is 200 OK', function () { pm.response.to.have.status(200); });",
+          "pm.test('Outcome ALREADY_PROCESSED', function () { pm.expect(pm.response.json().outcome).to.eql('ALREADY_PROCESSED'); });"
+        ]
+      ),
+      item('Setup: book seat 7 for Razorpay webhook failure',
+        req('POST', '/api/bookings/book', {
+          body: '{\n  "movieId": 1,\n  "seatIds": [7]\n}'
+        }),
+        [
+          "pm.collectionVariables.set('bookingIdWebhookRzpFail', pm.response.json().id);"
+        ]
+      ),
+      item('POST /api/payments/initiate - Razorpay for webhook failure',
+        req('POST', '/api/payments/initiate', {
+          body: '{\n  "bookingId": {{bookingIdWebhookRzpFail}},\n  "provider": "RAZORPAY"\n}'
+        }),
+        [
+          "pm.test('Status is 201 Created', function () { pm.response.to.have.status(201); });",
+          "const json = pm.response.json();",
+          "pm.collectionVariables.set('paymentIdWebhookRzpFail', json.paymentId);",
+          "pm.collectionVariables.set('gatewayOrderIdWebhookRzpFail', json.gatewayOrderId);",
+          "pm.collectionVariables.set('razorpayWebhookEventIdFail', 'evt_mock_rzp_webhook_fail_001');"
+        ]
+      ),
+      item('POST /api/payments/webhooks/razorpay - payment.failed',
+        req('POST', '/api/payments/webhooks/razorpay', {
+          auth: 'noauth',
+          headers: [
+            { key: 'X-Razorpay-Signature', value: '{{razorpayMockSignature}}' },
+            { key: 'X-Razorpay-Event-Id', value: '{{razorpayWebhookEventIdFail}}' }
+          ],
+          body: '{\n  "event": "payment.failed",\n  "payload": {\n    "payment": {\n      "entity": {\n        "id": "pay_rzp_webhook_fail",\n        "order_id": "{{gatewayOrderIdWebhookRzpFail}}",\n        "status": "failed",\n        "error_description": "Payment failed at gateway"\n      }\n    }\n  }\n}'
+        }),
+        [
+          "pm.test('Status is 200 OK', function () { pm.response.to.have.status(200); });",
+          "const json = pm.response.json();",
+          "pm.test('Outcome PROCESSED', function () { pm.expect(json.outcome).to.eql('PROCESSED'); });",
+          "pm.test('Payment FAILED', function () { pm.expect(json.paymentStatus).to.eql('FAILED'); });",
+          "pm.test('Booking CANCELLED', function () { pm.expect(json.bookingStatus).to.eql('CANCELLED'); });"
+        ]
+      )
+    ])
+  ]),
   folder('Happy path', 'Stripe and Razorpay mock success flows. Run after edge cases (uses seats 1-2 and re-books 6-9 if available).', [
     item('GET /api/payments/providers - list STRIPE and RAZORPAY',
       req('GET', '/api/payments/providers'),
@@ -1454,7 +1570,7 @@ const collection = {
 4. Users → Signup success → Users edge cases
 5. Auth → Login seed user (or signup + login) → Auth edge cases
 6. Bookings → Edge cases validation → Edge cases business rules → Happy path → Real-time show seats (edge cases then happy path)
-7. Payments → Edge cases validation → Edge cases business rules → Happy path (run in this order; seats 6–9 used in business rules first)
+7. Payments → Edge cases validation → Edge cases business rules → Webhooks (server-to-server) → Happy path (run in this order; seats 6–9 used in business rules and webhooks first)
 8. Tickets → Edge cases validation → Edge cases business rules → Happy path (requires Payments happy path for auto-issued ticket)
 9. Security Edge Cases
 
@@ -1467,8 +1583,8 @@ const collection = {
 - Poll: \`GET /api/shows/{showId}/availability?changedAfterEpochMs={serverTime}\`
 
 **Payments (mock — \`bms.payment.mock-enabled=true\`):**
-- Stripe success: \`signature\` starts with \`whsec_\`
-- Razorpay success: \`signature\` starts with \`rzp_sig_\`
+- Client callback success: \`signature\` starts with \`whsec_\` (Stripe) or \`rzp_sig_\` (Razorpay)
+- Server webhooks (no JWT): \`POST /api/payments/webhooks/stripe\` with \`Stripe-Signature\` header; \`POST /api/payments/webhooks/razorpay\` with \`X-Razorpay-Signature\` + \`X-Razorpay-Event-Id\`. Same mock signature prefixes. Retries are idempotent via \`gatewayEventId\`.
 
 **Auth & ownership:** userId is taken from JWT on book endpoints (do not send userId in body). Booking 1 belongs to john (USER). admin.seed@example.com (ADMIN) and partner.seed@example.com (PARTNER) can access any booking. cleanup-expired requires ADMIN or PARTNER (manual override; production uses automated scheduler).
 
@@ -1548,6 +1664,14 @@ const collection = {
     { key: 'razorpayMockSignature', value: 'rzp_sig_postman_mock', type: 'string' },
     { key: 'gatewayOrderIdStripe', value: '', type: 'string' },
     { key: 'gatewayOrderIdRazorpay', value: '', type: 'string' },
+    { key: 'bookingIdWebhookStripe', value: '', type: 'string' },
+    { key: 'paymentIdWebhookStripe', value: '', type: 'string' },
+    { key: 'gatewayOrderIdWebhookStripe', value: '', type: 'string' },
+    { key: 'stripeWebhookEventId', value: 'evt_mock_stripe_webhook_001', type: 'string' },
+    { key: 'bookingIdWebhookRzpFail', value: '', type: 'string' },
+    { key: 'paymentIdWebhookRzpFail', value: '', type: 'string' },
+    { key: 'gatewayOrderIdWebhookRzpFail', value: '', type: 'string' },
+    { key: 'razorpayWebhookEventIdFail', value: 'evt_mock_rzp_webhook_fail_001', type: 'string' },
     { key: 'ticketBookingReference', value: '', type: 'string' },
     { key: 'ticketQrPayload', value: '', type: 'string' },
     { key: 'ticketQrPayloadPay', value: '', type: 'string' },

@@ -1,10 +1,13 @@
 package org.example.bmsdec24.payments.adapter;
 
 import org.example.bmsdec24.config.PaymentProperties;
+import org.example.bmsdec24.exceptions.InvalidWebhookSignatureException;
 import org.example.bmsdec24.payments.GatewayChargeRequest;
 import org.example.bmsdec24.payments.GatewayOrder;
 import org.example.bmsdec24.payments.GatewayVerificationRequest;
 import org.example.bmsdec24.payments.GatewayVerificationResult;
+import org.example.bmsdec24.payments.GatewayWebhookPayload;
+import org.json.JSONObject;
 
 import java.util.UUID;
 
@@ -42,6 +45,44 @@ public class MockRazorpayClientAdapter implements RazorpayClientAdapter {
                     request.getPaymentReference(), "Razorpay reported the payment as failed");
         }
         return GatewayVerificationResult.success(request.getPaymentReference());
+    }
+
+    @Override
+    public GatewayWebhookPayload parseWebhook(String payload, String signatureHeader, String gatewayEventId) {
+        if (!isSignatureValid(signatureHeader)) {
+            throw new InvalidWebhookSignatureException("Invalid Razorpay webhook signature");
+        }
+        JSONObject event = new JSONObject(payload);
+        String eventType = event.getString("event");
+        String eventId = gatewayEventId != null && !gatewayEventId.isBlank()
+                ? gatewayEventId
+                : event.optString("id", "evt_mock_" + UUID.randomUUID());
+
+        if (!eventType.startsWith("payment.")) {
+            return GatewayWebhookPayload.ignored(eventId, eventType);
+        }
+
+        JSONObject payment = event.getJSONObject("payload").getJSONObject("payment").getJSONObject("entity");
+        String orderId = payment.getString("order_id");
+        String paymentId = payment.getString("id");
+        String status = payment.optString("status", "");
+        boolean succeeded = "payment.captured".equals(eventType) || "captured".equalsIgnoreCase(status);
+        boolean failed = "payment.failed".equals(eventType) || "failed".equalsIgnoreCase(status);
+
+        if (!succeeded && !failed) {
+            return GatewayWebhookPayload.ignored(eventId, eventType);
+        }
+
+        String failureReason = failed
+                ? payment.optString("error_description", "Razorpay reported the payment as failed")
+                : null;
+        return GatewayWebhookPayload.paymentOutcome(
+                eventId,
+                eventType,
+                orderId,
+                paymentId,
+                succeeded,
+                failureReason);
     }
 
     private boolean isSignatureValid(String signature) {

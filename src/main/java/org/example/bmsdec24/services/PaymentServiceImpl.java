@@ -4,6 +4,7 @@ import org.example.bmsdec24.config.PaymentProperties;
 import org.example.bmsdec24.dtos.PaymentProviderOptionDto;
 import org.example.bmsdec24.dtos.PaymentResponseDto;
 import org.example.bmsdec24.dtos.TicketSummaryDto;
+import org.example.bmsdec24.dtos.WebhookResponseDto;
 import org.example.bmsdec24.exceptions.BookingAlreadyProcessedException;
 import org.example.bmsdec24.exceptions.PaymentGatewayException;
 import org.example.bmsdec24.exceptions.InvalidBookingException;
@@ -15,16 +16,21 @@ import org.example.bmsdec24.exceptions.TicketNotFoundException;
 import org.example.bmsdec24.models.Booking;
 import org.example.bmsdec24.models.BookingStatus;
 import org.example.bmsdec24.models.Payment;
+import org.example.bmsdec24.models.PaymentGatewayEvent;
 import org.example.bmsdec24.models.PaymentProvider;
 import org.example.bmsdec24.models.PaymentStatus;
+import org.example.bmsdec24.models.WebhookProcessingOutcome;
 import org.example.bmsdec24.payments.GatewayChargeRequest;
+import org.example.bmsdec24.payments.GatewayWebhookPayload;
 import org.example.bmsdec24.payments.GatewayOrder;
 import org.example.bmsdec24.payments.GatewayVerificationRequest;
 import org.example.bmsdec24.payments.GatewayVerificationResult;
 import org.example.bmsdec24.payments.PaymentGateway;
 import org.example.bmsdec24.payments.PaymentGatewayFactory;
 import org.example.bmsdec24.repos.BookingRepository;
+import org.example.bmsdec24.repos.PaymentGatewayEventRepository;
 import org.example.bmsdec24.repos.PaymentRepository;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
@@ -39,6 +45,7 @@ public class PaymentServiceImpl implements PaymentService {
     private static final String DEFAULT_CURRENCY = "INR";
 
     private final PaymentRepository paymentRepository;
+    private final PaymentGatewayEventRepository paymentGatewayEventRepository;
     private final BookingRepository bookingRepository;
     private final PaymentGatewayFactory paymentGatewayFactory;
     private final BookingService bookingService;
@@ -46,12 +53,14 @@ public class PaymentServiceImpl implements PaymentService {
     private final PaymentProperties paymentProperties;
 
     public PaymentServiceImpl(PaymentRepository paymentRepository,
+                              PaymentGatewayEventRepository paymentGatewayEventRepository,
                               BookingRepository bookingRepository,
                               PaymentGatewayFactory paymentGatewayFactory,
                               BookingService bookingService,
                               TicketService ticketService,
                               PaymentProperties paymentProperties) {
         this.paymentRepository = paymentRepository;
+        this.paymentGatewayEventRepository = paymentGatewayEventRepository;
         this.bookingRepository = bookingRepository;
         this.paymentGatewayFactory = paymentGatewayFactory;
         this.bookingService = bookingService;
@@ -172,6 +181,50 @@ public class PaymentServiceImpl implements PaymentService {
         return toPaymentResponse(paymentRepository.save(payment));
     }
 
+    @Transactional(isolation = Isolation.READ_COMMITTED)
+    @Override
+    public WebhookResponseDto processGatewayWebhook(PaymentProvider provider, GatewayWebhookPayload payload) {
+        if (paymentGatewayEventRepository.existsByGatewayEventId(payload.getGatewayEventId())) {
+            Payment payment = paymentGatewayEventRepository.findByGatewayEventId(payload.getGatewayEventId())
+                    .map(PaymentGatewayEvent::getPayment)
+                    .map(stored -> paymentRepository.findDetailedById(stored.getId()).orElse(stored))
+                    .orElse(null);
+            return buildWebhookResponse(payload, WebhookProcessingOutcome.ALREADY_PROCESSED, payment);
+        }
+
+        if (!payload.isActionable()) {
+            recordGatewayEvent(provider, payload, null, WebhookProcessingOutcome.IGNORED);
+            return buildWebhookResponse(payload, WebhookProcessingOutcome.IGNORED, null);
+        }
+
+        Payment payment = paymentRepository.findDetailedByGatewayOrderId(payload.getGatewayOrderId())
+                .orElse(null);
+        if (payment == null) {
+            recordGatewayEvent(provider, payload, null, WebhookProcessingOutcome.PAYMENT_NOT_FOUND);
+            return buildWebhookResponse(payload, WebhookProcessingOutcome.PAYMENT_NOT_FOUND, null);
+        }
+
+        if (payment.getProvider() != provider) {
+            recordGatewayEvent(provider, payload, payment, WebhookProcessingOutcome.IGNORED);
+            return buildWebhookResponse(payload, WebhookProcessingOutcome.IGNORED, payment);
+        }
+
+        if (payment.getStatus() != PaymentStatus.PENDING) {
+            recordGatewayEvent(provider, payload, payment, WebhookProcessingOutcome.ALREADY_PROCESSED);
+            return buildWebhookResponse(payload, WebhookProcessingOutcome.ALREADY_PROCESSED, payment);
+        }
+
+        payment.setGatewayPaymentReference(payload.getPaymentReference());
+        if (payload.isPaymentSucceeded()) {
+            settleAsSuccess(payment, payment.getBooking());
+        } else {
+            settleAsFailure(payment, payment.getBooking(), payload.getFailureReason());
+        }
+        payment = paymentRepository.save(payment);
+        recordGatewayEvent(provider, payload, payment, WebhookProcessingOutcome.PROCESSED);
+        return buildWebhookResponse(payload, WebhookProcessingOutcome.PROCESSED, payment);
+    }
+
     @Transactional(readOnly = true)
     @Override
     public PaymentResponseDto getPayment(int paymentId) throws InvalidPaymentException {
@@ -233,5 +286,40 @@ public class PaymentServiceImpl implements PaymentService {
             response.setTicket(TicketSummaryDto.from(ticketService.getTicketForBooking(bookingId)));
         } catch (TicketNotFoundException ignored) {
         }
+    }
+
+    private void recordGatewayEvent(PaymentProvider provider,
+                                    GatewayWebhookPayload payload,
+                                    Payment payment,
+                                    WebhookProcessingOutcome outcome) {
+        PaymentGatewayEvent event = new PaymentGatewayEvent();
+        event.setGatewayEventId(payload.getGatewayEventId());
+        event.setProvider(provider);
+        event.setEventType(payload.getEventType());
+        event.setPayment(payment);
+        event.setOutcome(outcome);
+        event.setGatewayOrderId(payload.getGatewayOrderId());
+        try {
+            paymentGatewayEventRepository.save(event);
+        } catch (DataIntegrityViolationException ignored) {
+            // Concurrent duplicate delivery — unique constraint on gatewayEventId
+        }
+    }
+
+    private WebhookResponseDto buildWebhookResponse(GatewayWebhookPayload payload,
+                                                    WebhookProcessingOutcome outcome,
+                                                    Payment payment) {
+        WebhookResponseDto response = new WebhookResponseDto();
+        response.setGatewayEventId(payload.getGatewayEventId());
+        response.setEventType(payload.getEventType());
+        response.setOutcome(outcome);
+        if (payment != null) {
+            response.setPaymentId(payment.getId());
+            response.setPaymentStatus(payment.getStatus() == null ? null : payment.getStatus().name());
+            if (payment.getBooking() != null && payment.getBooking().getStatus() != null) {
+                response.setBookingStatus(payment.getBooking().getStatus().name());
+            }
+        }
+        return response;
     }
 }

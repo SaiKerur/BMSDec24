@@ -1,10 +1,13 @@
 package org.example.bmsdec24.payments.adapter;
 
 import org.example.bmsdec24.config.PaymentProperties;
+import org.example.bmsdec24.exceptions.InvalidWebhookSignatureException;
 import org.example.bmsdec24.payments.GatewayChargeRequest;
 import org.example.bmsdec24.payments.GatewayOrder;
 import org.example.bmsdec24.payments.GatewayVerificationRequest;
 import org.example.bmsdec24.payments.GatewayVerificationResult;
+import org.example.bmsdec24.payments.GatewayWebhookPayload;
+import org.json.JSONObject;
 
 import java.util.UUID;
 
@@ -43,6 +46,41 @@ public class MockStripeClientAdapter implements StripeClientAdapter {
                     request.getPaymentReference(), "Stripe reported the payment as failed");
         }
         return GatewayVerificationResult.success(request.getPaymentReference());
+    }
+
+    @Override
+    public GatewayWebhookPayload parseWebhook(String payload, String signatureHeader) {
+        if (!isSignatureValid(signatureHeader)) {
+            throw new InvalidWebhookSignatureException("Invalid Stripe webhook signature");
+        }
+        JSONObject event = new JSONObject(payload);
+        String eventId = event.getString("id");
+        String eventType = event.getString("type");
+
+        if (!eventType.startsWith("payment_intent.")) {
+            return GatewayWebhookPayload.ignored(eventId, eventType);
+        }
+
+        JSONObject intent = event.getJSONObject("data").getJSONObject("object");
+        String orderId = intent.getString("id");
+        String status = intent.optString("status", "");
+        boolean succeeded = "payment_intent.succeeded".equals(eventType) && "succeeded".equalsIgnoreCase(status);
+        boolean failed = "payment_intent.payment_failed".equals(eventType)
+                || "payment_intent.canceled".equals(eventType)
+                || "requires_payment_method".equalsIgnoreCase(status);
+
+        if (!succeeded && !failed) {
+            return GatewayWebhookPayload.ignored(eventId, eventType);
+        }
+
+        String failureReason = failed ? "Stripe reported the payment as failed" : null;
+        return GatewayWebhookPayload.paymentOutcome(
+                eventId,
+                eventType,
+                orderId,
+                orderId,
+                succeeded,
+                failureReason);
     }
 
     private boolean isSignatureValid(String signature) {

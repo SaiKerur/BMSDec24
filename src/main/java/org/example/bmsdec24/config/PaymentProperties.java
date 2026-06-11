@@ -70,6 +70,7 @@ public class PaymentProperties {
     public static class Razorpay {
         private String keyId = "";
         private String keySecret = "";
+        private String webhookSecret = "";
 
         public String getKeyId() {
             return keyId;
@@ -85,6 +86,14 @@ public class PaymentProperties {
 
         public void setKeySecret(String keySecret) {
             this.keySecret = normalize(keySecret);
+        }
+
+        public String getWebhookSecret() {
+            return webhookSecret;
+        }
+
+        public void setWebhookSecret(String webhookSecret) {
+            this.webhookSecret = normalize(webhookSecret);
         }
 
         public boolean isConfigured() {
