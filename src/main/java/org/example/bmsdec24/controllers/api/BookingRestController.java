@@ -4,12 +4,17 @@ import org.example.bmsdec24.dtos.BookSeatsRequestDto;
 import org.example.bmsdec24.dtos.BookShowSeatsRequestDto;
 import org.example.bmsdec24.dtos.BookingEventResponseDto;
 import org.example.bmsdec24.dtos.BookingResponseDto;
+import org.example.bmsdec24.dtos.RefundRequestDto;
+import org.example.bmsdec24.dtos.RefundResponseDto;
 import org.example.bmsdec24.dtos.TicketResponseDto;
 import org.example.bmsdec24.exceptions.AccessDeniedException;
 import org.example.bmsdec24.exceptions.InvalidBookingException;
+import org.example.bmsdec24.exceptions.InvalidRefundException;
 import org.example.bmsdec24.exceptions.InvalidRequestException;
 import org.example.bmsdec24.exceptions.InvalidTicketException;
 import org.example.bmsdec24.exceptions.InvalidUserException;
+import org.example.bmsdec24.exceptions.RefundAlreadyProcessedException;
+import org.example.bmsdec24.exceptions.RefundNotAllowedException;
 import org.example.bmsdec24.exceptions.SeatsNotAvailableException;
 import org.example.bmsdec24.exceptions.TicketNotFoundException;
 import org.example.bmsdec24.security.AuthenticatedUser;
@@ -17,6 +22,7 @@ import org.example.bmsdec24.security.BookingAccessService;
 import org.example.bmsdec24.security.SecurityUtils;
 import org.example.bmsdec24.services.BookingEventService;
 import org.example.bmsdec24.services.BookingService;
+import org.example.bmsdec24.services.RefundService;
 import org.example.bmsdec24.services.TicketService;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -36,15 +42,18 @@ public class BookingRestController {
     private final BookingAccessService bookingAccessService;
     private final TicketService ticketService;
     private final BookingEventService bookingEventService;
+    private final RefundService refundService;
 
     public BookingRestController(BookingService bookingService,
                                  BookingAccessService bookingAccessService,
                                  TicketService ticketService,
-                                 BookingEventService bookingEventService) {
+                                 BookingEventService bookingEventService,
+                                 RefundService refundService) {
         this.bookingService = bookingService;
         this.bookingAccessService = bookingAccessService;
         this.ticketService = ticketService;
         this.bookingEventService = bookingEventService;
+        this.refundService = refundService;
     }
 
     @GetMapping("/{bookingId}")
@@ -99,6 +108,20 @@ public class BookingRestController {
         AuthenticatedUser currentUser = SecurityUtils.requireCurrentUser();
         bookingAccessService.requireBookingAccess(bookingId, currentUser);
         return ResponseEntity.ok(BookingResponseDto.from(bookingService.cancelBooking(bookingId)));
+    }
+
+    @PostMapping("/{bookingId}/refund")
+    public ResponseEntity<RefundResponseDto> refundBooking(@PathVariable int bookingId,
+                                                           @RequestBody(required = false) RefundRequestDto requestDto)
+            throws InvalidRequestException, AccessDeniedException, RefundNotAllowedException,
+            RefundAlreadyProcessedException, InvalidRefundException {
+        if (bookingId <= 0) {
+            throw new InvalidRequestException("bookingId must be a positive integer");
+        }
+        AuthenticatedUser currentUser = SecurityUtils.requireCurrentUser();
+        bookingAccessService.requireBookingAccess(bookingId, currentUser);
+        String reason = requestDto == null ? null : requestDto.getReason();
+        return ResponseEntity.ok(refundService.processRefund(bookingId, reason));
     }
 
     @GetMapping("/{bookingId}/ticket")

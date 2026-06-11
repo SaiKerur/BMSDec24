@@ -5,14 +5,18 @@ import com.stripe.exception.SignatureVerificationException;
 import com.stripe.exception.StripeException;
 import com.stripe.model.Event;
 import com.stripe.model.PaymentIntent;
+import com.stripe.model.Refund;
 import com.stripe.model.StripeObject;
 import com.stripe.net.Webhook;
 import com.stripe.param.PaymentIntentCreateParams;
+import com.stripe.param.RefundCreateParams;
 import org.example.bmsdec24.config.PaymentProperties;
 import org.example.bmsdec24.exceptions.InvalidWebhookSignatureException;
 import org.example.bmsdec24.exceptions.PaymentGatewayException;
 import org.example.bmsdec24.payments.GatewayChargeRequest;
 import org.example.bmsdec24.payments.GatewayOrder;
+import org.example.bmsdec24.payments.GatewayRefundRequest;
+import org.example.bmsdec24.payments.GatewayRefundResult;
 import org.example.bmsdec24.payments.GatewayVerificationRequest;
 import org.example.bmsdec24.payments.GatewayVerificationResult;
 import org.example.bmsdec24.payments.GatewayWebhookPayload;
@@ -126,6 +130,25 @@ public class StripeSdkClientAdapter implements StripeClientAdapter {
                     failureReason);
         } catch (SignatureVerificationException e) {
             throw new InvalidWebhookSignatureException("Invalid Stripe webhook signature");
+        }
+    }
+
+    @Override
+    public GatewayRefundResult createRefund(GatewayRefundRequest request) {
+        try {
+            String paymentIntentId = request.getGatewayPaymentReference() != null
+                    && !request.getGatewayPaymentReference().isBlank()
+                    ? request.getGatewayPaymentReference()
+                    : request.getGatewayOrderId();
+            RefundCreateParams params = RefundCreateParams.builder()
+                    .setPaymentIntent(paymentIntentId)
+                    .setAmount(toMinorUnits(request.getAmount(), request.getCurrency()))
+                    .putMetadata("booking_id", String.valueOf(request.getBookingId()))
+                    .build();
+            Refund refund = Refund.create(params);
+            return GatewayRefundResult.success(refund.getId());
+        } catch (StripeException e) {
+            return GatewayRefundResult.failure("Stripe refund failed: " + e.getMessage());
         }
     }
 

@@ -21,6 +21,7 @@ SET SQL_SAFE_UPDATES = 0;
 SET FOREIGN_KEY_CHECKS = 0;
 
 TRUNCATE TABLE payments;
+TRUNCATE TABLE refunds;
 TRUNCATE TABLE booking_seats;
 TRUNCATE TABLE bookings;
 TRUNCATE TABLE show_seats;
@@ -32,9 +33,20 @@ TRUNCATE TABLE seats;
 TRUNCATE TABLE theatres;
 TRUNCATE TABLE movies;
 TRUNCATE TABLE cities;
+TRUNCATE TABLE cancellation_policies;
 TRUNCATE TABLE `user`;
 
 SET FOREIGN_KEY_CHECKS = 1;
+
+-- ===========================================================================
+-- Cancellation policies (hours before show → refund %)
+-- ===========================================================================
+
+INSERT INTO cancellation_policies (id, hours_before_show, refund_percentage, description, created_at, updated_at) VALUES
+  (1, 48, 100, 'Full refund if cancelled 48+ hours before show', NOW(), NOW()),
+  (2, 24,  50, '50% refund if cancelled 24+ hours before show',  NOW(), NOW()),
+  (3, 12,  25, '25% refund if cancelled 12+ hours before show',  NOW(), NOW()),
+  (4,  0,   0, 'No refund within 12 hours of show start',       NOW(), NOW());
 
 -- ===========================================================================
 -- Core masters
@@ -202,7 +214,7 @@ INSERT INTO shows (id, screen_id, movie_id, start_time, created_at, updated_at) 
   -- Postman-aligned (theatres 1-2)
   (1,  1,  1,  DATE_ADD(NOW(), INTERVAL 2 HOUR),  NOW(), NOW()),
   (2,  1,  2,  DATE_ADD(NOW(), INTERVAL 8 HOUR),  NOW(), NOW()),
-  (3,  2,  1,  DATE_ADD(NOW(), INTERVAL 5 HOUR),  NOW(), NOW()),
+  (3,  2,  1,  DATE_ADD(NOW(), INTERVAL 30 HOUR), NOW(), NOW()),
   (4,  2,  3,  DATE_ADD(NOW(), INTERVAL 11 HOUR), NOW(), NOW()),
   -- Additional showtimes at other theatres
   (5,  3,  4,  DATE_ADD(NOW(), INTERVAL 3 HOUR),  NOW(), NOW()),

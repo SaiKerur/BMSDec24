@@ -9,4 +9,6 @@ public interface PaymentGateway {
     GatewayOrder createOrder(GatewayChargeRequest request);
 
     GatewayVerificationResult verify(GatewayVerificationRequest request);
+
+    GatewayRefundResult refund(GatewayRefundRequest request);
 }

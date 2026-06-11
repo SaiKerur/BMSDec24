@@ -1,5 +1,6 @@
 package org.example.bmsdec24.config;
 
+import org.example.bmsdec24.models.CancellationPolicy;
 import org.example.bmsdec24.models.City;
 import org.example.bmsdec24.models.Feature;
 import org.example.bmsdec24.models.Genre;
@@ -14,6 +15,7 @@ import org.example.bmsdec24.models.Theatre;
 import org.example.bmsdec24.models.Role;
 import org.example.bmsdec24.models.TheatreMovie;
 import org.example.bmsdec24.models.User;
+import org.example.bmsdec24.repos.CancellationPolicyRepository;
 import org.example.bmsdec24.repos.CityRepository;
 import org.example.bmsdec24.repos.MovieRepository;
 import org.example.bmsdec24.repos.ScreenRepository;
@@ -37,7 +39,8 @@ import java.util.List;
 public class H2DataSeeder {
 
     @Bean
-    CommandLineRunner seedDemoData(CityRepository cityRepository,
+    CommandLineRunner seedDemoData(CancellationPolicyRepository cancellationPolicyRepository,
+                                   CityRepository cityRepository,
                                    MovieRepository movieRepository,
                                    TheatreRepository theatreRepository,
                                    ScreenRepository screenRepository,
@@ -50,6 +53,8 @@ public class H2DataSeeder {
             if (cityRepository.count() > 0) {
                 return;
             }
+
+            seedCancellationPolicies(cancellationPolicyRepository);
 
             City bengaluru = cityRepository.save(city("Bengaluru"));
             City mumbai = cityRepository.save(city("Mumbai"));
@@ -84,13 +89,16 @@ public class H2DataSeeder {
 
             Show orionMorning = showRepository.save(show(orionAudi1, actionBlast, hoursFromNow(2)));
             Show orionEvening = showRepository.save(show(orionAudi1, romCom, hoursFromNow(8)));
-            Show phoenixAfternoon = showRepository.save(show(phoenixAudi1, actionBlast, hoursFromNow(5)));
+            Show phoenixAfternoon = showRepository.save(show(phoenixAudi1, actionBlast, hoursFromNow(30)));
+            Show orionLate = showRepository.save(show(orionAudi1, actionBlast, hoursFromNow(50)));
 
             seedShowSeats(showSeatRepository, orionMorning, List.of(orionA1, orionA2),
                     List.of(SeatStatus.AVAILABLE, SeatStatus.AVAILABLE));
             seedShowSeats(showSeatRepository, orionEvening, List.of(orionA1, orionA2),
                     List.of(SeatStatus.AVAILABLE, SeatStatus.BLOCKED));
             seedShowSeats(showSeatRepository, phoenixAfternoon, List.of(phoenixA1, phoenixA2),
+                    List.of(SeatStatus.AVAILABLE, SeatStatus.AVAILABLE));
+            seedShowSeats(showSeatRepository, orionLate, List.of(orionA1, orionA2),
                     List.of(SeatStatus.AVAILABLE, SeatStatus.AVAILABLE));
 
             User john = user("John Seed", "john.seed@example.com", passwordEncoder.encode("Password@123"), Role.USER);
@@ -102,6 +110,21 @@ public class H2DataSeeder {
             userRepository.save(admin);
             userRepository.save(partner);
         };
+    }
+
+    private static void seedCancellationPolicies(CancellationPolicyRepository repository) {
+        repository.save(policy(48, 100, "Full refund if cancelled 48+ hours before show"));
+        repository.save(policy(24, 50, "50% refund if cancelled 24+ hours before show"));
+        repository.save(policy(12, 25, "25% refund if cancelled 12+ hours before show"));
+        repository.save(policy(0, 0, "No refund within 12 hours of show start"));
+    }
+
+    private static CancellationPolicy policy(int hoursBeforeShow, int refundPercentage, String description) {
+        CancellationPolicy policy = new CancellationPolicy();
+        policy.setHoursBeforeShow(hoursBeforeShow);
+        policy.setRefundPercentage(refundPercentage);
+        policy.setDescription(description);
+        return policy;
     }
 
     private static void seedShowSeats(ShowSeatRepository repository, Show show, List<Seat> seats, List<SeatStatus> statuses) {

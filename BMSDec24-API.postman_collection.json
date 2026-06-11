@@ -2,7 +2,7 @@
   "info": {
     "name": "BMSDec24 API - Full Scenarios",
     "_postman_id": "c5b7f498-52ab-4b85-a5bc-b2f42ce6f5f2",
-    "description": "End-to-end and edge-case coverage for the BMSDec24 API.\n\n**Runner order (recommended):**\n1. Health\n2. Catalog (public — happy path then edge cases)\n3. Shows (Real-time) — public showtimes + availability polling\n4. Users → Signup success → Users edge cases\n5. Auth → Login seed user (or signup + login) → Auth edge cases\n6. Bookings → Edge cases validation → Edge cases business rules → Happy path → Real-time show seats (edge cases then happy path)\n7. Payments → Edge cases validation → Edge cases business rules → Happy path (run in this order; seats 6–9 used in business rules first)\n8. Tickets → Edge cases validation → Edge cases business rules → Happy path (requires Payments happy path for auto-issued ticket)\n9. Security Edge Cases\n\n**Prerequisites:** MySQL — run `db/seed_bmsdec24.sql` after first start. H2 profile — demo data loads automatically.\n\n**Real-time shows (H2 seed):**\n- Show 1 @ Orion — Action Blast — showSeats 1-2 AVAILABLE\n- Show 2 @ Orion — RomCom — showSeat 3 AVAILABLE, 4 BLOCKED\n- Show 3 @ Phoenix — Action Blast — showSeats 5-6 AVAILABLE\n- Poll: `GET /api/shows/{showId}/availability?changedAfterEpochMs={serverTime}`\n\n**Payments (mock — `bms.payment.mock-enabled=true`):**\n- Stripe success: `signature` starts with `whsec_`\n- Razorpay success: `signature` starts with `rzp_sig_`\n\n**Auth & ownership:** userId is taken from JWT on book endpoints (do not send userId in body). Booking 1 belongs to john (USER). admin.seed@example.com (ADMIN) and partner.seed@example.com (PARTNER) can access any booking. cleanup-expired requires ADMIN or PARTNER (manual override; production uses automated scheduler).\n\n**Hold expiry (automated):** BookingHoldExpiryScheduler runs every `bms.booking.hold-expiry-interval-ms` (default 120000 = 2 min). It releases PENDING bookings past `holdExpiresAt`, syncs Seat + ShowSeat to AVAILABLE, and records BookingEvent EXPIRED. Audit trail: `GET /api/bookings/{bookingId}/events` (HELD, EXPIRED, CONFIRMED, CANCELLED).\n\n**Seed reference:** Theatre 1 movies 1,2 — seats 1-2 AVAILABLE, 3-4 BOOKED, 5 BLOCKED. Theatre 2 movies 1,3 — seats 6-9 AVAILABLE. Seed users: john.seed@example.com / Password@123 (USER), admin.seed@example.com (ADMIN)",
+    "description": "End-to-end and edge-case coverage for the BMSDec24 API.\n\n**Runner order (recommended):**\n1. Health\n2. Catalog (public — happy path then edge cases)\n3. Shows (Real-time) — public showtimes + availability polling\n4. Users → Signup success → Users edge cases\n5. Auth → Login seed user (or signup + login) → Auth edge cases\n6. Bookings → Edge cases validation → Edge cases business rules → Happy path → Real-time show seats (edge cases then happy path)\n7. Payments → Edge cases validation → Edge cases business rules → Webhooks (server-to-server) → Happy path (run in this order; seats 6–9 used in business rules and webhooks first)\n8. Refunds → Happy path → Edge cases (policy-based refunds; run after Auth login; uses seats 1-2 and show seats 1-2, 5-6)\n9. Tickets → Edge cases validation → Edge cases business rules → Happy path (requires Payments happy path for auto-issued ticket)\n10. Security Edge Cases\n\n**Prerequisites:** MySQL — run `db/seed_bmsdec24.sql` after first start. H2 profile — demo data loads automatically.\n\n**Real-time shows (H2 seed):**\n- Show 1 @ Orion — Action Blast — showSeats 1-2 AVAILABLE\n- Show 2 @ Orion — RomCom — showSeat 3 AVAILABLE, 4 BLOCKED\n- Show 3 @ Phoenix — Action Blast — showSeats 5-6 AVAILABLE\n- Poll: `GET /api/shows/{showId}/availability?changedAfterEpochMs={serverTime}`\n\n**Payments (mock — `bms.payment.mock-enabled=true`):**\n- Client callback success: `signature` starts with `whsec_` (Stripe) or `rzp_sig_` (Razorpay)\n- Server webhooks (no JWT): `POST /api/payments/webhooks/stripe` with `Stripe-Signature` header; `POST /api/payments/webhooks/razorpay` with `X-Razorpay-Signature` + `X-Razorpay-Event-Id`. Same mock signature prefixes. Retries are idempotent via `gatewayEventId`.\n\n**Auth & ownership:** userId is taken from JWT on book endpoints (do not send userId in body). Booking 1 belongs to john (USER). admin.seed@example.com (ADMIN) and partner.seed@example.com (PARTNER) can access any booking. cleanup-expired requires ADMIN or PARTNER (manual override; production uses automated scheduler).\n\n**Hold expiry (automated):** BookingHoldExpiryScheduler runs every `bms.booking.hold-expiry-interval-ms` (default 120000 = 2 min). It releases PENDING bookings past `holdExpiresAt`, syncs Seat + ShowSeat to AVAILABLE, and records BookingEvent EXPIRED. Audit trail: `GET /api/bookings/{bookingId}/events` (HELD, EXPIRED, CONFIRMED, CANCELLED).\n\n**Refunds & cancellation policy:**\n- Policies (hours before show → refund %): 48h→100%, 24h→50%, 12h→25%, <12h→0%\n- `POST /api/bookings/{id}/refund` — evaluates policy, processes gateway refund, cancels booking\n- `GET /api/refunds/{id}` — refund details (owner, ADMIN, or PARTNER)\n- Bookings without a show default to 100% refund\n\n**Seed reference:** Theatre 1 movies 1,2 — seats 1-2 AVAILABLE, 3-4 BOOKED, 5 BLOCKED. Theatre 2 movies 1,3 — seats 6-9 AVAILABLE. Show 3 @ Phoenix starts in ~30h (50% refund). Show 1 @ Orion starts in ~2h (0% refund). Seed users: john.seed@example.com / Password@123 (USER), admin.seed@example.com (ADMIN)",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "auth": {
@@ -6170,6 +6170,504 @@
           "description": "Run before Happy path. Uses theatre-2 seats 6-9."
         },
         {
+          "name": "Webhooks (server-to-server)",
+          "item": [
+            {
+              "name": "Edge cases",
+              "item": [
+                {
+                  "name": "POST /api/payments/webhooks/stripe - invalid signature (401)",
+                  "event": [
+                    {
+                      "listen": "test",
+                      "script": {
+                        "type": "text/javascript",
+                        "exec": [
+                          "pm.test('Status is 401 Unauthorized', function () {",
+                          "    pm.response.to.have.status(401);",
+                          "});"
+                        ]
+                      }
+                    }
+                  ],
+                  "request": {
+                    "method": "POST",
+                    "header": [
+                      {
+                        "key": "Stripe-Signature",
+                        "value": "invalid_not_whsec_prefix"
+                      },
+                      {
+                        "key": "Content-Type",
+                        "value": "application/json"
+                      }
+                    ],
+                    "url": {
+                      "raw": "{{baseUrl}}/api/payments/webhooks/stripe",
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
+                      "path": [
+                        "api",
+                        "payments",
+                        "webhooks",
+                        "stripe"
+                      ]
+                    },
+                    "description": "",
+                    "auth": {
+                      "type": "noauth"
+                    },
+                    "body": {
+                      "mode": "raw",
+                      "raw": "{\n  \"id\": \"evt_mock_stripe_bad_sig\",\n  \"type\": \"payment_intent.succeeded\",\n  \"data\": {\n    \"object\": {\n      \"id\": \"pi_mock_invalid\",\n      \"status\": \"succeeded\"\n    }\n  }\n}"
+                    }
+                  },
+                  "response": []
+                },
+                {
+                  "name": "POST /api/payments/webhooks/razorpay - invalid signature (401)",
+                  "event": [
+                    {
+                      "listen": "test",
+                      "script": {
+                        "type": "text/javascript",
+                        "exec": [
+                          "pm.test('Status is 401 Unauthorized', function () {",
+                          "    pm.response.to.have.status(401);",
+                          "});"
+                        ]
+                      }
+                    }
+                  ],
+                  "request": {
+                    "method": "POST",
+                    "header": [
+                      {
+                        "key": "X-Razorpay-Signature",
+                        "value": "invalid_not_rzp_sig_prefix"
+                      },
+                      {
+                        "key": "X-Razorpay-Event-Id",
+                        "value": "evt_mock_rzp_bad_sig"
+                      },
+                      {
+                        "key": "Content-Type",
+                        "value": "application/json"
+                      }
+                    ],
+                    "url": {
+                      "raw": "{{baseUrl}}/api/payments/webhooks/razorpay",
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
+                      "path": [
+                        "api",
+                        "payments",
+                        "webhooks",
+                        "razorpay"
+                      ]
+                    },
+                    "description": "",
+                    "auth": {
+                      "type": "noauth"
+                    },
+                    "body": {
+                      "mode": "raw",
+                      "raw": "{\n  \"event\": \"payment.captured\",\n  \"payload\": {\n    \"payment\": {\n      \"entity\": {\n        \"id\": \"pay_mock_bad\",\n        \"order_id\": \"order_mock_bad\",\n        \"status\": \"captured\"\n      }\n    }\n  }\n}"
+                    }
+                  },
+                  "response": []
+                },
+                {
+                  "name": "POST /api/payments/webhooks/stripe - empty body (400)",
+                  "event": [
+                    {
+                      "listen": "test",
+                      "script": {
+                        "type": "text/javascript",
+                        "exec": [
+                          "pm.test('Status is 400 Bad Request', function () {",
+                          "    pm.response.to.have.status(400);",
+                          "});"
+                        ]
+                      }
+                    }
+                  ],
+                  "request": {
+                    "method": "POST",
+                    "header": [
+                      {
+                        "key": "Stripe-Signature",
+                        "value": "{{stripeMockSignature}}"
+                      },
+                      {
+                        "key": "Content-Type",
+                        "value": "application/json"
+                      }
+                    ],
+                    "url": {
+                      "raw": "{{baseUrl}}/api/payments/webhooks/stripe",
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
+                      "path": [
+                        "api",
+                        "payments",
+                        "webhooks",
+                        "stripe"
+                      ]
+                    },
+                    "description": "",
+                    "auth": {
+                      "type": "noauth"
+                    },
+                    "body": {
+                      "mode": "raw",
+                      "raw": ""
+                    }
+                  },
+                  "response": []
+                }
+              ],
+              "description": "Invalid webhook signatures (public endpoints)."
+            },
+            {
+              "name": "Happy path",
+              "item": [
+                {
+                  "name": "Setup: book seat 6 for Stripe webhook (stores bookingIdWebhookStripe)",
+                  "event": [
+                    {
+                      "listen": "test",
+                      "script": {
+                        "type": "text/javascript",
+                        "exec": [
+                          "pm.test('Status is 200 OK', function () { pm.response.to.have.status(200); });",
+                          "pm.collectionVariables.set('bookingIdWebhookStripe', pm.response.json().id);"
+                        ]
+                      }
+                    }
+                  ],
+                  "request": {
+                    "method": "POST",
+                    "header": [
+                      {
+                        "key": "Content-Type",
+                        "value": "application/json"
+                      }
+                    ],
+                    "url": {
+                      "raw": "{{baseUrl}}/api/bookings/book",
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
+                      "path": [
+                        "api",
+                        "bookings",
+                        "book"
+                      ]
+                    },
+                    "description": "",
+                    "body": {
+                      "mode": "raw",
+                      "raw": "{\n  \"movieId\": 1,\n  \"seatIds\": [6]\n}"
+                    }
+                  },
+                  "response": []
+                },
+                {
+                  "name": "POST /api/payments/initiate - Stripe for webhook (stores paymentIdWebhookStripe)",
+                  "event": [
+                    {
+                      "listen": "test",
+                      "script": {
+                        "type": "text/javascript",
+                        "exec": [
+                          "pm.test('Status is 201 Created', function () { pm.response.to.have.status(201); });",
+                          "const json = pm.response.json();",
+                          "pm.collectionVariables.set('paymentIdWebhookStripe', json.paymentId);",
+                          "pm.collectionVariables.set('gatewayOrderIdWebhookStripe', json.gatewayOrderId);",
+                          "pm.collectionVariables.set('stripeWebhookEventId', 'evt_mock_stripe_webhook_001');"
+                        ]
+                      }
+                    }
+                  ],
+                  "request": {
+                    "method": "POST",
+                    "header": [
+                      {
+                        "key": "Content-Type",
+                        "value": "application/json"
+                      }
+                    ],
+                    "url": {
+                      "raw": "{{baseUrl}}/api/payments/initiate",
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
+                      "path": [
+                        "api",
+                        "payments",
+                        "initiate"
+                      ]
+                    },
+                    "description": "",
+                    "body": {
+                      "mode": "raw",
+                      "raw": "{\n  \"bookingId\": {{bookingIdWebhookStripe}},\n  \"provider\": \"STRIPE\"\n}"
+                    }
+                  },
+                  "response": []
+                },
+                {
+                  "name": "POST /api/payments/webhooks/stripe - payment_intent.succeeded",
+                  "event": [
+                    {
+                      "listen": "test",
+                      "script": {
+                        "type": "text/javascript",
+                        "exec": [
+                          "pm.test('Status is 200 OK', function () { pm.response.to.have.status(200); });",
+                          "const json = pm.response.json();",
+                          "pm.test('Outcome PROCESSED', function () { pm.expect(json.outcome).to.eql('PROCESSED'); });",
+                          "pm.test('Payment SUCCESS', function () { pm.expect(json.paymentStatus).to.eql('SUCCESS'); });",
+                          "pm.test('Booking CONFIRMED', function () { pm.expect(json.bookingStatus).to.eql('CONFIRMED'); });"
+                        ]
+                      }
+                    }
+                  ],
+                  "request": {
+                    "method": "POST",
+                    "header": [
+                      {
+                        "key": "Stripe-Signature",
+                        "value": "{{stripeMockSignature}}"
+                      },
+                      {
+                        "key": "Content-Type",
+                        "value": "application/json"
+                      }
+                    ],
+                    "url": {
+                      "raw": "{{baseUrl}}/api/payments/webhooks/stripe",
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
+                      "path": [
+                        "api",
+                        "payments",
+                        "webhooks",
+                        "stripe"
+                      ]
+                    },
+                    "description": "",
+                    "auth": {
+                      "type": "noauth"
+                    },
+                    "body": {
+                      "mode": "raw",
+                      "raw": "{\n  \"id\": \"{{stripeWebhookEventId}}\",\n  \"type\": \"payment_intent.succeeded\",\n  \"data\": {\n    \"object\": {\n      \"id\": \"{{gatewayOrderIdWebhookStripe}}\",\n      \"status\": \"succeeded\"\n    }\n  }\n}"
+                    }
+                  },
+                  "response": []
+                },
+                {
+                  "name": "POST /api/payments/webhooks/stripe - idempotent retry (ALREADY_PROCESSED)",
+                  "event": [
+                    {
+                      "listen": "test",
+                      "script": {
+                        "type": "text/javascript",
+                        "exec": [
+                          "pm.test('Status is 200 OK', function () { pm.response.to.have.status(200); });",
+                          "pm.test('Outcome ALREADY_PROCESSED', function () { pm.expect(pm.response.json().outcome).to.eql('ALREADY_PROCESSED'); });"
+                        ]
+                      }
+                    }
+                  ],
+                  "request": {
+                    "method": "POST",
+                    "header": [
+                      {
+                        "key": "Stripe-Signature",
+                        "value": "{{stripeMockSignature}}"
+                      },
+                      {
+                        "key": "Content-Type",
+                        "value": "application/json"
+                      }
+                    ],
+                    "url": {
+                      "raw": "{{baseUrl}}/api/payments/webhooks/stripe",
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
+                      "path": [
+                        "api",
+                        "payments",
+                        "webhooks",
+                        "stripe"
+                      ]
+                    },
+                    "description": "",
+                    "auth": {
+                      "type": "noauth"
+                    },
+                    "body": {
+                      "mode": "raw",
+                      "raw": "{\n  \"id\": \"{{stripeWebhookEventId}}\",\n  \"type\": \"payment_intent.succeeded\",\n  \"data\": {\n    \"object\": {\n      \"id\": \"{{gatewayOrderIdWebhookStripe}}\",\n      \"status\": \"succeeded\"\n    }\n  }\n}"
+                    }
+                  },
+                  "response": []
+                },
+                {
+                  "name": "Setup: book seat 7 for Razorpay webhook failure",
+                  "event": [
+                    {
+                      "listen": "test",
+                      "script": {
+                        "type": "text/javascript",
+                        "exec": [
+                          "pm.collectionVariables.set('bookingIdWebhookRzpFail', pm.response.json().id);"
+                        ]
+                      }
+                    }
+                  ],
+                  "request": {
+                    "method": "POST",
+                    "header": [
+                      {
+                        "key": "Content-Type",
+                        "value": "application/json"
+                      }
+                    ],
+                    "url": {
+                      "raw": "{{baseUrl}}/api/bookings/book",
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
+                      "path": [
+                        "api",
+                        "bookings",
+                        "book"
+                      ]
+                    },
+                    "description": "",
+                    "body": {
+                      "mode": "raw",
+                      "raw": "{\n  \"movieId\": 1,\n  \"seatIds\": [7]\n}"
+                    }
+                  },
+                  "response": []
+                },
+                {
+                  "name": "POST /api/payments/initiate - Razorpay for webhook failure",
+                  "event": [
+                    {
+                      "listen": "test",
+                      "script": {
+                        "type": "text/javascript",
+                        "exec": [
+                          "pm.test('Status is 201 Created', function () { pm.response.to.have.status(201); });",
+                          "const json = pm.response.json();",
+                          "pm.collectionVariables.set('paymentIdWebhookRzpFail', json.paymentId);",
+                          "pm.collectionVariables.set('gatewayOrderIdWebhookRzpFail', json.gatewayOrderId);",
+                          "pm.collectionVariables.set('razorpayWebhookEventIdFail', 'evt_mock_rzp_webhook_fail_001');"
+                        ]
+                      }
+                    }
+                  ],
+                  "request": {
+                    "method": "POST",
+                    "header": [
+                      {
+                        "key": "Content-Type",
+                        "value": "application/json"
+                      }
+                    ],
+                    "url": {
+                      "raw": "{{baseUrl}}/api/payments/initiate",
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
+                      "path": [
+                        "api",
+                        "payments",
+                        "initiate"
+                      ]
+                    },
+                    "description": "",
+                    "body": {
+                      "mode": "raw",
+                      "raw": "{\n  \"bookingId\": {{bookingIdWebhookRzpFail}},\n  \"provider\": \"RAZORPAY\"\n}"
+                    }
+                  },
+                  "response": []
+                },
+                {
+                  "name": "POST /api/payments/webhooks/razorpay - payment.failed",
+                  "event": [
+                    {
+                      "listen": "test",
+                      "script": {
+                        "type": "text/javascript",
+                        "exec": [
+                          "pm.test('Status is 200 OK', function () { pm.response.to.have.status(200); });",
+                          "const json = pm.response.json();",
+                          "pm.test('Outcome PROCESSED', function () { pm.expect(json.outcome).to.eql('PROCESSED'); });",
+                          "pm.test('Payment FAILED', function () { pm.expect(json.paymentStatus).to.eql('FAILED'); });",
+                          "pm.test('Booking CANCELLED', function () { pm.expect(json.bookingStatus).to.eql('CANCELLED'); });"
+                        ]
+                      }
+                    }
+                  ],
+                  "request": {
+                    "method": "POST",
+                    "header": [
+                      {
+                        "key": "X-Razorpay-Signature",
+                        "value": "{{razorpayMockSignature}}"
+                      },
+                      {
+                        "key": "X-Razorpay-Event-Id",
+                        "value": "{{razorpayWebhookEventIdFail}}"
+                      },
+                      {
+                        "key": "Content-Type",
+                        "value": "application/json"
+                      }
+                    ],
+                    "url": {
+                      "raw": "{{baseUrl}}/api/payments/webhooks/razorpay",
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
+                      "path": [
+                        "api",
+                        "payments",
+                        "webhooks",
+                        "razorpay"
+                      ]
+                    },
+                    "description": "",
+                    "auth": {
+                      "type": "noauth"
+                    },
+                    "body": {
+                      "mode": "raw",
+                      "raw": "{\n  \"event\": \"payment.failed\",\n  \"payload\": {\n    \"payment\": {\n      \"entity\": {\n        \"id\": \"pay_rzp_webhook_fail\",\n        \"order_id\": \"{{gatewayOrderIdWebhookRzpFail}}\",\n        \"status\": \"failed\",\n        \"error_description\": \"Payment failed at gateway\"\n      }\n    }\n  }\n}"
+                    }
+                  },
+                  "response": []
+                }
+              ],
+              "description": "Confirm/cancel bookings via provider webhooks (idempotent retries)."
+            }
+          ],
+          "description": "Gateway webhooks — no JWT. Uses Stripe-Signature / X-Razorpay-Signature headers. Run after Edge cases business rules."
+        },
+        {
           "name": "Happy path",
           "item": [
             {
@@ -6601,6 +7099,886 @@
         }
       ],
       "description": "Strategy (STRIPE | RAZORPAY) + mock adapters. Run Auth login first. Run edge-case subfolders before Happy path (seats are consumed in order)."
+    },
+    {
+      "name": "Refunds",
+      "item": [
+        {
+          "name": "Happy path",
+          "item": [
+            {
+              "name": "Setup: book theatre seats for full refund (stores refundBookingId)",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('Status is 200 OK', function () { pm.response.to.have.status(200); });",
+                      "pm.collectionVariables.set('refundBookingId', pm.response.json().id);"
+                    ]
+                  }
+                }
+              ],
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/bookings/book",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "bookings",
+                    "book"
+                  ]
+                },
+                "description": "",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"movieId\": 1,\n  \"seatIds\": [1]\n}"
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "POST /api/payments/initiate - refund flow (stores refundPaymentId)",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('Status is 201 Created', function () { pm.response.to.have.status(201); });",
+                      "pm.collectionVariables.set('refundPaymentId', pm.response.json().paymentId);"
+                    ]
+                  }
+                }
+              ],
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/payments/initiate",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "payments",
+                    "initiate"
+                  ]
+                },
+                "description": "",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"bookingId\": {{refundBookingId}},\n  \"provider\": \"STRIPE\"\n}"
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "POST /api/payments/callback - confirm payment for refund test",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('Payment SUCCESS', function () { pm.expect(pm.response.json().status).to.eql('SUCCESS'); });",
+                      "pm.test('Booking CONFIRMED', function () { pm.expect(pm.response.json().bookingStatus).to.eql('CONFIRMED'); });"
+                    ]
+                  }
+                }
+              ],
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/payments/callback",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "payments",
+                    "callback"
+                  ]
+                },
+                "description": "",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"paymentId\": {{refundPaymentId}},\n  \"paymentReference\": \"pay_refund_full\",\n  \"signature\": \"{{stripeMockSignature}}\",\n  \"success\": true\n}"
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "POST /api/bookings/{{refundBookingId}}/refund - full refund (100%, no show)",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('Status is 200 OK', function () { pm.response.to.have.status(200); });",
+                      "const json = pm.response.json();",
+                      "pm.test('Refund SUCCESS', function () { pm.expect(json.status).to.eql('SUCCESS'); });",
+                      "pm.test('100% refund for non-show booking', function () { pm.expect(json.refundPercentage).to.eql(100); });",
+                      "pm.test('Booking CANCELLED', function () { pm.expect(json.bookingStatus).to.eql('CANCELLED'); });",
+                      "pm.test('Gateway refund id present', function () { pm.expect(json.gatewayRefundId).to.be.a('string').that.is.not.empty; });",
+                      "pm.collectionVariables.set('refundId', json.refundId);"
+                    ]
+                  }
+                }
+              ],
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/bookings/{{refundBookingId}}/refund",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "bookings",
+                    "{{refundBookingId}}",
+                    "refund"
+                  ]
+                },
+                "description": "",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"reason\": \"Change of plans\"\n}"
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "GET /api/refunds/{{refundId}} - fetch refund details",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('Status is 200 OK', function () { pm.response.to.have.status(200); });",
+                      "pm.test('Matches stored refundId', function () {",
+                      "    pm.expect(pm.response.json().refundId).to.eql(Number(pm.collectionVariables.get('refundId')));",
+                      "});",
+                      "pm.test('Refund SUCCESS', function () { pm.expect(pm.response.json().status).to.eql('SUCCESS'); });"
+                    ]
+                  }
+                }
+              ],
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/api/refunds/{{refundId}}",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "refunds",
+                    "{{refundId}}"
+                  ]
+                },
+                "description": ""
+              },
+              "response": []
+            },
+            {
+              "name": "Setup: book show seats for partial refund (show 3, 30h → 50%)",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('Status is 200 OK', function () { pm.response.to.have.status(200); });",
+                      "pm.collectionVariables.set('refundShowBookingId', pm.response.json().id);"
+                    ]
+                  }
+                }
+              ],
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/bookings/book-show-seats",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "bookings",
+                    "book-show-seats"
+                  ]
+                },
+                "description": "",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"showSeatIds\": [5, 6]\n}"
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "POST /api/payments/initiate - partial refund flow",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.collectionVariables.set('refundShowPaymentId', pm.response.json().paymentId);"
+                    ]
+                  }
+                }
+              ],
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/payments/initiate",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "payments",
+                    "initiate"
+                  ]
+                },
+                "description": "",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"bookingId\": {{refundShowBookingId}},\n  \"provider\": \"STRIPE\"\n}"
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "POST /api/payments/callback - confirm show booking payment",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('Status is 200 OK', function () {",
+                      "    pm.response.to.have.status(200);",
+                      "});"
+                    ]
+                  }
+                }
+              ],
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/payments/callback",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "payments",
+                    "callback"
+                  ]
+                },
+                "description": "",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"paymentId\": {{refundShowPaymentId}},\n  \"paymentReference\": \"pay_refund_partial\",\n  \"signature\": \"{{stripeMockSignature}}\",\n  \"success\": true\n}"
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "POST /api/bookings/{{refundShowBookingId}}/refund - 50% partial refund",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('Status is 200 OK', function () { pm.response.to.have.status(200); });",
+                      "const json = pm.response.json();",
+                      "pm.test('Refund SUCCESS', function () { pm.expect(json.status).to.eql('SUCCESS'); });",
+                      "pm.test('50% policy applied', function () { pm.expect(json.refundPercentage).to.eql(50); });",
+                      "pm.test('Partial amount refunded', function () { pm.expect(json.amount).to.be.above(0); });"
+                    ]
+                  }
+                }
+              ],
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/bookings/{{refundShowBookingId}}/refund",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "bookings",
+                    "{{refundShowBookingId}}",
+                    "refund"
+                  ]
+                },
+                "description": "",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"reason\": \"Schedule conflict\"\n}"
+                }
+              },
+              "response": []
+            }
+          ],
+          "description": "Full refund (theatre booking, no show) and policy-based partial refund (show booking)."
+        },
+        {
+          "name": "Edge cases",
+          "item": [
+            {
+              "name": "POST /api/bookings/0/refund (400)",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('Status is 400 Bad Request', function () {",
+                      "    pm.response.to.have.status(400);",
+                      "});"
+                    ]
+                  }
+                }
+              ],
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/bookings/0/refund",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "bookings",
+                    "0",
+                    "refund"
+                  ]
+                },
+                "description": "",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{}"
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "GET /api/refunds/0 (400)",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('Status is 400 Bad Request', function () {",
+                      "    pm.response.to.have.status(400);",
+                      "});"
+                    ]
+                  }
+                }
+              ],
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/api/refunds/0",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "refunds",
+                    "0"
+                  ]
+                },
+                "description": ""
+              },
+              "response": []
+            },
+            {
+              "name": "GET /api/refunds/999999 (404)",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('Status is 404 Not Found', function () {",
+                      "    pm.response.to.have.status(404);",
+                      "});"
+                    ]
+                  }
+                }
+              ],
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/api/refunds/999999",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "refunds",
+                    "999999"
+                  ]
+                },
+                "description": ""
+              },
+              "response": []
+            },
+            {
+              "name": "Setup: book PENDING booking for refund rejection",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.collectionVariables.set('refundPendingBookingId', pm.response.json().id);"
+                    ]
+                  }
+                }
+              ],
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/bookings/book",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "bookings",
+                    "book"
+                  ]
+                },
+                "description": "",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"movieId\": 1,\n  \"seatIds\": [2]\n}"
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "POST /api/bookings/{{refundPendingBookingId}}/refund - PENDING booking (409)",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('Status is 409 Conflict', function () {",
+                      "    pm.response.to.have.status(409);",
+                      "});"
+                    ]
+                  }
+                }
+              ],
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/bookings/{{refundPendingBookingId}}/refund",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "bookings",
+                    "{{refundPendingBookingId}}",
+                    "refund"
+                  ]
+                },
+                "description": "",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{}"
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Setup: book show 1 (2h, 0% policy) for no-refund cancel",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.collectionVariables.set('refundNoMoneyBookingId', pm.response.json().id);"
+                    ]
+                  }
+                }
+              ],
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/bookings/book-show-seats",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "bookings",
+                    "book-show-seats"
+                  ]
+                },
+                "description": "",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"showSeatIds\": [1, 2]\n}"
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "POST /api/payments/initiate - no-refund show booking",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.collectionVariables.set('refundNoMoneyPaymentId', pm.response.json().paymentId);"
+                    ]
+                  }
+                }
+              ],
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/payments/initiate",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "payments",
+                    "initiate"
+                  ]
+                },
+                "description": "",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"bookingId\": {{refundNoMoneyBookingId}},\n  \"provider\": \"STRIPE\"\n}"
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "POST /api/payments/callback - confirm no-refund show booking",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('Status is 200 OK', function () {",
+                      "    pm.response.to.have.status(200);",
+                      "});"
+                    ]
+                  }
+                }
+              ],
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/payments/callback",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "payments",
+                    "callback"
+                  ]
+                },
+                "description": "",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"paymentId\": {{refundNoMoneyPaymentId}},\n  \"paymentReference\": \"pay_refund_none\",\n  \"signature\": \"{{stripeMockSignature}}\",\n  \"success\": true\n}"
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "POST /api/bookings/{{refundNoMoneyBookingId}}/refund - 0% policy (SKIPPED)",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('Status is 200 OK', function () { pm.response.to.have.status(200); });",
+                      "const json = pm.response.json();",
+                      "pm.test('Refund SKIPPED (0%)', function () { pm.expect(json.status).to.eql('SKIPPED'); });",
+                      "pm.test('Zero refund amount', function () { pm.expect(json.amount).to.eql(0); });",
+                      "pm.test('Booking still cancelled', function () { pm.expect(json.bookingStatus).to.eql('CANCELLED'); });"
+                    ]
+                  }
+                }
+              ],
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/bookings/{{refundNoMoneyBookingId}}/refund",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "bookings",
+                    "{{refundNoMoneyBookingId}}",
+                    "refund"
+                  ]
+                },
+                "description": "",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"reason\": \"Late cancellation\"\n}"
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "POST /api/bookings/{{refundBookingId}}/refund - idempotent (already refunded)",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('Status is 200 OK', function () { pm.response.to.have.status(200); });",
+                      "pm.test('Returns same refund', function () {",
+                      "    pm.expect(pm.response.json().refundId).to.eql(Number(pm.collectionVariables.get('refundId')));",
+                      "});"
+                    ]
+                  }
+                }
+              ],
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/bookings/{{refundBookingId}}/refund",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "bookings",
+                    "{{refundBookingId}}",
+                    "refund"
+                  ]
+                },
+                "description": "",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{}"
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "POST /api/bookings/{{refundBookingId}}/refund - another user (403)",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('Status is 403 Forbidden', function () {",
+                      "    pm.response.to.have.status(403);",
+                      "});"
+                    ]
+                  }
+                }
+              ],
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{amyAccessToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/bookings/{{refundBookingId}}/refund",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "bookings",
+                    "{{refundBookingId}}",
+                    "refund"
+                  ]
+                },
+                "description": "",
+                "auth": {
+                  "type": "noauth"
+                },
+                "body": {
+                  "mode": "raw",
+                  "raw": "{}"
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "GET /api/refunds/{{refundId}} - missing token (401)",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('Status is 401 Unauthorized', function () {",
+                      "    pm.response.to.have.status(401);",
+                      "});"
+                    ]
+                  }
+                }
+              ],
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/api/refunds/{{refundId}}",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "refunds",
+                    "{{refundId}}"
+                  ]
+                },
+                "description": "",
+                "auth": {
+                  "type": "noauth"
+                }
+              },
+              "response": []
+            }
+          ],
+          "description": "Validation, policy limits, and authorization."
+        }
+      ],
+      "description": "Cancellation policy engine — POST /api/bookings/{id}/refund applies time-based refund rules and cancels the booking. Run Auth login first."
     },
     {
       "name": "Tickets",
@@ -8202,6 +9580,46 @@
       "type": "string"
     },
     {
+      "key": "bookingIdWebhookStripe",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "paymentIdWebhookStripe",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "gatewayOrderIdWebhookStripe",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "stripeWebhookEventId",
+      "value": "evt_mock_stripe_webhook_001",
+      "type": "string"
+    },
+    {
+      "key": "bookingIdWebhookRzpFail",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "paymentIdWebhookRzpFail",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "gatewayOrderIdWebhookRzpFail",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "razorpayWebhookEventIdFail",
+      "value": "evt_mock_rzp_webhook_fail_001",
+      "type": "string"
+    },
+    {
       "key": "ticketBookingReference",
       "value": "",
       "type": "string"
@@ -8228,6 +9646,46 @@
     },
     {
       "key": "ticketRevokeReference",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "refundBookingId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "refundPaymentId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "refundId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "refundShowBookingId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "refundShowPaymentId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "refundPendingBookingId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "refundNoMoneyBookingId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "refundNoMoneyPaymentId",
       "value": "",
       "type": "string"
     }

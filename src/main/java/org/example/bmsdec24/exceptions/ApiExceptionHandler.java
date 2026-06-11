@@ -105,6 +105,26 @@ public class ApiExceptionHandler {
                 .body(ApiErrorDto.of("PAYMENT_GATEWAY_ERROR", message(ex, "Payment gateway call failed")));
     }
 
+    @ExceptionHandler(RefundNotAllowedException.class)
+    public ResponseEntity<ApiErrorDto> handleRefundNotAllowed(RefundNotAllowedException ex) {
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(ApiErrorDto.of("REFUND_NOT_ALLOWED", message(ex, "Refund is not allowed for this booking")));
+    }
+
+    @ExceptionHandler(RefundAlreadyProcessedException.class)
+    public ResponseEntity<ApiErrorDto> handleRefundAlreadyProcessed(RefundAlreadyProcessedException ex) {
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(ApiErrorDto.of("REFUND_ALREADY_PROCESSED", message(ex, "Refund was already processed")));
+    }
+
+    @ExceptionHandler(InvalidRefundException.class)
+    public ResponseEntity<ApiErrorDto> handleInvalidRefund(InvalidRefundException ex) {
+        String msg = message(ex, "Refund request is invalid");
+        HttpStatus status = msg.toLowerCase().contains("not found") ? HttpStatus.NOT_FOUND : HttpStatus.CONFLICT;
+        String code = status == HttpStatus.NOT_FOUND ? "REFUND_NOT_FOUND" : "REFUND_FAILED";
+        return ResponseEntity.status(status).body(ApiErrorDto.of(code, msg));
+    }
+
     @ExceptionHandler(InvalidWebhookSignatureException.class)
     public ResponseEntity<ApiErrorDto> handleInvalidWebhookSignature(InvalidWebhookSignatureException ex) {
         return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
