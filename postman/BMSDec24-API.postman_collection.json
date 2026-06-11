@@ -2,7 +2,7 @@
   "info": {
     "name": "BMSDec24 API - Full Scenarios",
     "_postman_id": "c5b7f498-52ab-4b85-a5bc-b2f42ce6f5f2",
-    "description": "End-to-end and edge-case coverage for the BMSDec24 API.\n\n**Runner order (recommended):**\n1. Health\n2. Catalog (public — happy path then edge cases)\n3. Shows (Real-time) — public showtimes + availability polling\n4. Users → Signup success → Users edge cases\n5. Auth → Login seed user (or signup + login) → Auth edge cases\n6. Bookings → Edge cases validation → Edge cases business rules → Happy path → Real-time show seats (edge cases then happy path)\n7. Payments → Edge cases validation → Edge cases business rules → Webhooks (server-to-server) → Happy path (run in this order; seats 6–9 used in business rules and webhooks first)\n8. Refunds → Happy path → Edge cases (policy-based refunds; run after Auth login; uses seats 1-2 and show seats 1-2, 5-6)\n9. Tickets → Edge cases validation → Edge cases business rules → Happy path (requires Payments happy path for auto-issued ticket)\n10. Security Edge Cases\n\n**Prerequisites:** MySQL — run `db/seed_bmsdec24.sql` after first start. H2 profile — demo data loads automatically.\n\n**Real-time shows (H2 seed):**\n- Show 1 @ Orion — Action Blast — showSeats 1-2 AVAILABLE\n- Show 2 @ Orion — RomCom — showSeat 3 AVAILABLE, 4 BLOCKED\n- Show 3 @ Phoenix — Action Blast — showSeats 5-6 AVAILABLE\n- Poll: `GET /api/shows/{showId}/availability?changedAfterEpochMs={serverTime}`\n\n**Payments (mock — `bms.payment.mock-enabled=true`):**\n- Client callback success: `signature` starts with `whsec_` (Stripe) or `rzp_sig_` (Razorpay)\n- Server webhooks (no JWT): `POST /api/payments/webhooks/stripe` with `Stripe-Signature` header; `POST /api/payments/webhooks/razorpay` with `X-Razorpay-Signature` + `X-Razorpay-Event-Id`. Same mock signature prefixes. Retries are idempotent via `gatewayEventId`.\n\n**Auth & ownership:** userId is taken from JWT on book endpoints (do not send userId in body). Booking 1 belongs to john (USER). admin.seed@example.com (ADMIN) and partner.seed@example.com (PARTNER) can access any booking. cleanup-expired requires ADMIN or PARTNER (manual override; production uses automated scheduler).\n\n**Hold expiry (automated):** BookingHoldExpiryScheduler runs every `bms.booking.hold-expiry-interval-ms` (default 120000 = 2 min). It releases PENDING bookings past `holdExpiresAt`, syncs Seat + ShowSeat to AVAILABLE, and records BookingEvent EXPIRED. Audit trail: `GET /api/bookings/{bookingId}/events` (HELD, EXPIRED, CONFIRMED, CANCELLED).\n\n**Refunds & cancellation policy:**\n- Policies (hours before show → refund %): 48h→100%, 24h→50%, 12h→25%, <12h→0%\n- `POST /api/bookings/{id}/refund` — evaluates policy, processes gateway refund, cancels booking\n- `GET /api/refunds/{id}` — refund details (owner, ADMIN, or PARTNER)\n- Bookings without a show default to 100% refund\n\n**Seed reference:** Theatre 1 movies 1,2 — seats 1-2 AVAILABLE, 3-4 BOOKED, 5 BLOCKED. Theatre 2 movies 1,3 — seats 6-9 AVAILABLE. Show 3 @ Phoenix starts in ~30h (50% refund). Show 1 @ Orion starts in ~2h (0% refund). Seed users: john.seed@example.com / Password@123 (USER), admin.seed@example.com (ADMIN)",
+    "description": "End-to-end and edge-case coverage for the BMSDec24 API.\n\n**Runner order (recommended):**\n1. Health\n2. Catalog (public — happy path then edge cases)\n3. Shows (Real-time) — public showtimes + availability polling\n4. Users → Signup success → Users edge cases\n5. Auth → Login seed user (or signup + login) → Auth edge cases\n6. Bookings → Edge cases validation → Edge cases business rules → Happy path → Real-time show seats (edge cases then happy path)\n7. Payments → Edge cases validation → Edge cases business rules → Webhooks (server-to-server) → Happy path (run in this order; seats 6–9 used in business rules and webhooks first)\n8. Refunds → Happy path → Edge cases (policy-based refunds; run after Auth login; uses seats 1-2 and show seats 1-2, 5-6)\n9. Tickets → Edge cases validation → Edge cases business rules → Happy path (requires Payments happy path for auto-issued ticket)\n10. Security Edge Cases\n\n**Prerequisites:** MySQL — run `db/seed_bmsdec24.sql` after first start. H2 profile — demo data loads automatically.\n\n**Real-time shows (H2 seed):**\n- Show 1 @ Orion — Action Blast — showSeats 1-2 AVAILABLE\n- Show 2 @ Orion — RomCom — showSeat 3 AVAILABLE, 4 BLOCKED\n- Show 3 @ Phoenix — Action Blast — showSeats 5-6 AVAILABLE\n- Poll: `GET /api/shows/{showId}/availability?changedAfterEpochMs={serverTime}`\n\n**Payments (mock — `bms.payment.mock-enabled=true`):**\n- Client callback success: `signature` starts with `whsec_` (Stripe) or `rzp_sig_` (Razorpay)\n- Server webhooks (no JWT): `POST /api/payments/webhooks/stripe` with `Stripe-Signature` header; `POST /api/payments/webhooks/razorpay` with `X-Razorpay-Signature` + `X-Razorpay-Event-Id`. Same mock signature prefixes. Retries are idempotent via `gatewayEventId`.\n\n**Auth & ownership:** userId is taken from JWT on book endpoints (do not send userId in body). Booking 1 belongs to john (USER). admin.seed@example.com (ADMIN) and partner.seed@example.com (PARTNER) can access any booking. cleanup-expired requires ADMIN or PARTNER (manual override; production uses automated scheduler).\n\n**Hold expiry (automated):** BookingHoldExpiryScheduler runs every `bms.booking.hold-expiry-interval-ms` (default 120000 = 2 min). It releases PENDING bookings past `holdExpiresAt`, syncs Seat + ShowSeat to AVAILABLE, and records BookingEvent EXPIRED. Audit trail: `GET /api/bookings/{bookingId}/events` (HELD, EXPIRED, CONFIRMED, CANCELLED).\n\n**Refunds & cancellation policy:**\n- Policies (hours before show → refund %): 48h→100%, 24h→50%, 12h→25%, <12h→0%\n- `POST /api/bookings/{id}/refund` — evaluates policy, processes gateway refund, cancels booking\n- `GET /api/refunds/{id}` — refund details (owner, ADMIN, or PARTNER)\n- Bookings without a show default to 100% refund\n\n**Seed reference:** Movies 1-3 NOW_SHOWING with rich catalog fields; movies 4-5 COMING_SOON (Galactic Dawn, Monsoon Letters). Theatre 1 movies 1,2 — seats 1-2 AVAILABLE, 3-4 BOOKED, 5 BLOCKED. Theatre 2 movies 1,3 — seats 6-9 AVAILABLE. Show 3 @ Phoenix starts in ~30h (50% refund). Show 1 @ Orion starts in ~2h (0% refund). Seed users: john.seed@example.com / Password@123 (USER), admin.seed@example.com (ADMIN)",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "auth": {
@@ -326,6 +326,261 @@
                     "api",
                     "catalog",
                     "movies?genre=ROM_COM"
+                  ]
+                },
+                "description": "",
+                "auth": {
+                  "type": "noauth"
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "GET /api/catalog/movies/1",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('Status is 200', function () {",
+                      "    pm.response.to.have.status(200);",
+                      "});",
+                      "const movie = pm.response.json();",
+                      "pm.test('Movie has catalog fields', function () {",
+                      "    pm.expect(movie).to.have.property('posterUrl');",
+                      "    pm.expect(movie).to.have.property('trailerUrl');",
+                      "    pm.expect(movie).to.have.property('language');",
+                      "    pm.expect(movie).to.have.property('runtime');",
+                      "    pm.expect(movie).to.have.property('certification');",
+                      "    pm.expect(movie.cast).to.be.an('array');",
+                      "    pm.expect(movie).to.have.property('synopsis');",
+                      "    pm.expect(movie).to.have.property('releaseDate');",
+                      "    pm.expect(movie.status).to.eql('NOW_SHOWING');",
+                      "});"
+                    ]
+                  }
+                }
+              ],
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/api/catalog/movies/1",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "catalog",
+                    "movies",
+                    "1"
+                  ]
+                },
+                "description": "Rich movie detail for Action Blast.",
+                "auth": {
+                  "type": "noauth"
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "GET /api/catalog/movies/search?q=Action",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('Status is 200', function () {",
+                      "    pm.response.to.have.status(200);",
+                      "});",
+                      "pm.test('Search returns matches', function () {",
+                      "    const movies = pm.response.json();",
+                      "    pm.expect(movies).to.be.an('array').that.is.not.empty;",
+                      "    pm.expect(movies.some(m => m.title.includes('Action'))).to.be.true;",
+                      "});"
+                    ]
+                  }
+                }
+              ],
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/api/catalog/movies/search?q=Action",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "catalog",
+                    "movies",
+                    "search?q=Action"
+                  ]
+                },
+                "description": "",
+                "auth": {
+                  "type": "noauth"
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "GET /api/catalog/movies/search?q=Alex",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('Status is 200', function () {",
+                      "    pm.response.to.have.status(200);",
+                      "});",
+                      "pm.test('Cast search finds Action Blast', function () {",
+                      "    pm.expect(pm.response.json().some(m => m.title === 'Action Blast')).to.be.true;",
+                      "});"
+                    ]
+                  }
+                }
+              ],
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/api/catalog/movies/search?q=Alex",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "catalog",
+                    "movies",
+                    "search?q=Alex"
+                  ]
+                },
+                "description": "Search by cast member name.",
+                "auth": {
+                  "type": "noauth"
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "GET /api/catalog/movies/now-showing",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('Status is 200', function () {",
+                      "    pm.response.to.have.status(200);",
+                      "});",
+                      "pm.test('All movies are NOW_SHOWING', function () {",
+                      "    pm.response.json().forEach(m => pm.expect(m.status).to.eql('NOW_SHOWING'));",
+                      "});"
+                    ]
+                  }
+                }
+              ],
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/api/catalog/movies/now-showing",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "catalog",
+                    "movies",
+                    "now-showing"
+                  ]
+                },
+                "description": "",
+                "auth": {
+                  "type": "noauth"
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "GET /api/catalog/movies/now-showing?cityId=1",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('Status is 200', function () {",
+                      "    pm.response.to.have.status(200);",
+                      "});",
+                      "pm.test('City filter returns now-showing movies', function () {",
+                      "    const movies = pm.response.json();",
+                      "    pm.expect(movies).to.be.an('array').that.is.not.empty;",
+                      "    movies.forEach(m => pm.expect(m.status).to.eql('NOW_SHOWING'));",
+                      "});"
+                    ]
+                  }
+                }
+              ],
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/api/catalog/movies/now-showing?cityId=1",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "catalog",
+                    "movies",
+                    "now-showing?cityId=1"
+                  ]
+                },
+                "description": "Now showing in Bengaluru (city 1).",
+                "auth": {
+                  "type": "noauth"
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "GET /api/catalog/movies/coming-soon",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('Status is 200', function () {",
+                      "    pm.response.to.have.status(200);",
+                      "});",
+                      "pm.test('All movies are COMING_SOON', function () {",
+                      "    const movies = pm.response.json();",
+                      "    pm.expect(movies).to.be.an('array').that.is.not.empty;",
+                      "    movies.forEach(m => pm.expect(m.status).to.eql('COMING_SOON'));",
+                      "});"
+                    ]
+                  }
+                }
+              ],
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/api/catalog/movies/coming-soon",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "catalog",
+                    "movies",
+                    "coming-soon"
                   ]
                 },
                 "description": "",
@@ -713,6 +968,191 @@
                     "api",
                     "catalog",
                     "movies?genre=INVALID"
+                  ]
+                },
+                "description": "",
+                "auth": {
+                  "type": "noauth"
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "GET /api/catalog/movies/0 (400)",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('Status is 400 Bad Request', function () {",
+                      "    pm.response.to.have.status(400);",
+                      "});"
+                    ]
+                  }
+                }
+              ],
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/api/catalog/movies/0",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "catalog",
+                    "movies",
+                    "0"
+                  ]
+                },
+                "description": "",
+                "auth": {
+                  "type": "noauth"
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "GET /api/catalog/movies/99999 (404)",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('Status is 404 Not Found', function () {",
+                      "    pm.response.to.have.status(404);",
+                      "});"
+                    ]
+                  }
+                }
+              ],
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/api/catalog/movies/99999",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "catalog",
+                    "movies",
+                    "99999"
+                  ]
+                },
+                "description": "",
+                "auth": {
+                  "type": "noauth"
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "GET /api/catalog/movies/search?q= (400)",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('Status is 400 Bad Request', function () {",
+                      "    pm.response.to.have.status(400);",
+                      "});"
+                    ]
+                  }
+                }
+              ],
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/api/catalog/movies/search?q=",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "catalog",
+                    "movies",
+                    "search?q="
+                  ]
+                },
+                "description": "",
+                "auth": {
+                  "type": "noauth"
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "GET /api/catalog/movies/now-showing?cityId=0 (400)",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('Status is 400 Bad Request', function () {",
+                      "    pm.response.to.have.status(400);",
+                      "});"
+                    ]
+                  }
+                }
+              ],
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/api/catalog/movies/now-showing?cityId=0",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "catalog",
+                    "movies",
+                    "now-showing?cityId=0"
+                  ]
+                },
+                "description": "",
+                "auth": {
+                  "type": "noauth"
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "GET /api/catalog/movies/now-showing?cityId=99999 (404)",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('Status is 404 Not Found', function () {",
+                      "    pm.response.to.have.status(404);",
+                      "});"
+                    ]
+                  }
+                }
+              ],
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/api/catalog/movies/now-showing?cityId=99999",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "catalog",
+                    "movies",
+                    "now-showing?cityId=99999"
                   ]
                 },
                 "description": "",
