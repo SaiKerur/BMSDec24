@@ -17,6 +17,7 @@ import org.example.bmsdec24.repos.BookingEventRepository;
 import org.example.bmsdec24.repos.BookingRepository;
 import org.example.bmsdec24.repos.CityRepository;
 import org.example.bmsdec24.repos.MovieRepository;
+import org.example.bmsdec24.repos.PaymentGatewayEventRepository;
 import org.example.bmsdec24.repos.PaymentRepository;
 import org.example.bmsdec24.repos.SeatRepository;
 import org.example.bmsdec24.repos.TheatreRepository;
@@ -78,6 +79,9 @@ class TicketFlowIntegrationTest {
     private PaymentRepository paymentRepository;
 
     @Autowired
+    private PaymentGatewayEventRepository paymentGatewayEventRepository;
+
+    @Autowired
     private TicketRepository ticketRepository;
 
     @Autowired
@@ -90,6 +94,7 @@ class TicketFlowIntegrationTest {
 
     @BeforeEach
     void setUp() {
+        paymentGatewayEventRepository.deleteAll();
         ticketRepository.deleteAll();
         paymentRepository.deleteAll();
         bookingEventRepository.deleteAll();
