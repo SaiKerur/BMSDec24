@@ -1480,6 +1480,178 @@ const paymentsFolder = folder('Payments', 'Strategy (STRIPE | RAZORPAY) + mock a
   ])
 ]);
 
+const refundsFolder = folder('Refunds', 'Cancellation policy engine — POST /api/bookings/{id}/refund applies time-based refund rules and cancels the booking. Run Auth login first.', [
+  folder('Happy path', 'Full refund (theatre booking, no show) and policy-based partial refund (show booking).', [
+    item('Setup: book theatre seats for full refund (stores refundBookingId)',
+      req('POST', '/api/bookings/book', {
+        body: '{\n  "movieId": 1,\n  "seatIds": [1]\n}'
+      }),
+      [
+        "pm.test('Status is 200 OK', function () { pm.response.to.have.status(200); });",
+        "pm.collectionVariables.set('refundBookingId', pm.response.json().id);"
+      ]
+    ),
+    item('POST /api/payments/initiate - refund flow (stores refundPaymentId)',
+      req('POST', '/api/payments/initiate', {
+        body: '{\n  "bookingId": {{refundBookingId}},\n  "provider": "STRIPE"\n}'
+      }),
+      [
+        "pm.test('Status is 201 Created', function () { pm.response.to.have.status(201); });",
+        "pm.collectionVariables.set('refundPaymentId', pm.response.json().paymentId);"
+      ]
+    ),
+    item('POST /api/payments/callback - confirm payment for refund test',
+      req('POST', '/api/payments/callback', {
+        body: '{\n  "paymentId": {{refundPaymentId}},\n  "paymentReference": "pay_refund_full",\n  "signature": "{{stripeMockSignature}}",\n  "success": true\n}'
+      }),
+      [
+        "pm.test('Payment SUCCESS', function () { pm.expect(pm.response.json().status).to.eql('SUCCESS'); });",
+        "pm.test('Booking CONFIRMED', function () { pm.expect(pm.response.json().bookingStatus).to.eql('CONFIRMED'); });"
+      ]
+    ),
+    item('POST /api/bookings/{{refundBookingId}}/refund - full refund (100%, no show)',
+      req('POST', '/api/bookings/{{refundBookingId}}/refund', {
+        body: '{\n  "reason": "Change of plans"\n}'
+      }),
+      [
+        "pm.test('Status is 200 OK', function () { pm.response.to.have.status(200); });",
+        "const json = pm.response.json();",
+        "pm.test('Refund SUCCESS', function () { pm.expect(json.status).to.eql('SUCCESS'); });",
+        "pm.test('100% refund for non-show booking', function () { pm.expect(json.refundPercentage).to.eql(100); });",
+        "pm.test('Booking CANCELLED', function () { pm.expect(json.bookingStatus).to.eql('CANCELLED'); });",
+        "pm.test('Gateway refund id present', function () { pm.expect(json.gatewayRefundId).to.be.a('string').that.is.not.empty; });",
+        "pm.collectionVariables.set('refundId', json.refundId);"
+      ]
+    ),
+    item('GET /api/refunds/{{refundId}} - fetch refund details',
+      req('GET', '/api/refunds/{{refundId}}'),
+      [
+        "pm.test('Status is 200 OK', function () { pm.response.to.have.status(200); });",
+        "pm.test('Matches stored refundId', function () {",
+        "    pm.expect(pm.response.json().refundId).to.eql(Number(pm.collectionVariables.get('refundId')));",
+        "});",
+        "pm.test('Refund SUCCESS', function () { pm.expect(pm.response.json().status).to.eql('SUCCESS'); });"
+      ]
+    ),
+    item('Setup: book show seats for partial refund (show 3, 30h → 50%)',
+      req('POST', '/api/bookings/book-show-seats', {
+        body: '{\n  "showSeatIds": [5, 6]\n}'
+      }),
+      [
+        "pm.test('Status is 200 OK', function () { pm.response.to.have.status(200); });",
+        "pm.collectionVariables.set('refundShowBookingId', pm.response.json().id);"
+      ]
+    ),
+    item('POST /api/payments/initiate - partial refund flow',
+      req('POST', '/api/payments/initiate', {
+        body: '{\n  "bookingId": {{refundShowBookingId}},\n  "provider": "STRIPE"\n}'
+      }),
+      [
+        "pm.collectionVariables.set('refundShowPaymentId', pm.response.json().paymentId);"
+      ]
+    ),
+    item('POST /api/payments/callback - confirm show booking payment',
+      req('POST', '/api/payments/callback', {
+        body: '{\n  "paymentId": {{refundShowPaymentId}},\n  "paymentReference": "pay_refund_partial",\n  "signature": "{{stripeMockSignature}}",\n  "success": true\n}'
+      }),
+      testStatus(200, 'Status is 200 OK')
+    ),
+    item('POST /api/bookings/{{refundShowBookingId}}/refund - 50% partial refund',
+      req('POST', '/api/bookings/{{refundShowBookingId}}/refund', {
+        body: '{\n  "reason": "Schedule conflict"\n}'
+      }),
+      [
+        "pm.test('Status is 200 OK', function () { pm.response.to.have.status(200); });",
+        "const json = pm.response.json();",
+        "pm.test('Refund SUCCESS', function () { pm.expect(json.status).to.eql('SUCCESS'); });",
+        "pm.test('50% policy applied', function () { pm.expect(json.refundPercentage).to.eql(50); });",
+        "pm.test('Partial amount refunded', function () { pm.expect(json.amount).to.be.above(0); });"
+      ]
+    )
+  ]),
+  folder('Edge cases', 'Validation, policy limits, and authorization.', [
+    item('POST /api/bookings/0/refund (400)',
+      req('POST', '/api/bookings/0/refund', { body: '{}' }),
+      testStatus(400, 'Status is 400 Bad Request')
+    ),
+    item('GET /api/refunds/0 (400)',
+      req('GET', '/api/refunds/0'),
+      testStatus(400, 'Status is 400 Bad Request')
+    ),
+    item('GET /api/refunds/999999 (404)',
+      req('GET', '/api/refunds/999999'),
+      testStatus(404, 'Status is 404 Not Found')
+    ),
+    item('Setup: book PENDING booking for refund rejection',
+      req('POST', '/api/bookings/book', {
+        body: '{\n  "movieId": 1,\n  "seatIds": [2]\n}'
+      }),
+      [
+        "pm.collectionVariables.set('refundPendingBookingId', pm.response.json().id);"
+      ]
+    ),
+    item('POST /api/bookings/{{refundPendingBookingId}}/refund - PENDING booking (409)',
+      req('POST', '/api/bookings/{{refundPendingBookingId}}/refund', { body: '{}' }),
+      testStatus(409, 'Status is 409 Conflict')
+    ),
+    item('Setup: book show 1 (2h, 0% policy) for no-refund cancel',
+      req('POST', '/api/bookings/book-show-seats', {
+        body: '{\n  "showSeatIds": [1, 2]\n}'
+      }),
+      [
+        "pm.collectionVariables.set('refundNoMoneyBookingId', pm.response.json().id);"
+      ]
+    ),
+    item('POST /api/payments/initiate - no-refund show booking',
+      req('POST', '/api/payments/initiate', {
+        body: '{\n  "bookingId": {{refundNoMoneyBookingId}},\n  "provider": "STRIPE"\n}'
+      }),
+      [
+        "pm.collectionVariables.set('refundNoMoneyPaymentId', pm.response.json().paymentId);"
+      ]
+    ),
+    item('POST /api/payments/callback - confirm no-refund show booking',
+      req('POST', '/api/payments/callback', {
+        body: '{\n  "paymentId": {{refundNoMoneyPaymentId}},\n  "paymentReference": "pay_refund_none",\n  "signature": "{{stripeMockSignature}}",\n  "success": true\n}'
+      }),
+      testStatus(200, 'Status is 200 OK')
+    ),
+    item('POST /api/bookings/{{refundNoMoneyBookingId}}/refund - 0% policy (SKIPPED)',
+      req('POST', '/api/bookings/{{refundNoMoneyBookingId}}/refund', {
+        body: '{\n  "reason": "Late cancellation"\n}'
+      }),
+      [
+        "pm.test('Status is 200 OK', function () { pm.response.to.have.status(200); });",
+        "const json = pm.response.json();",
+        "pm.test('Refund SKIPPED (0%)', function () { pm.expect(json.status).to.eql('SKIPPED'); });",
+        "pm.test('Zero refund amount', function () { pm.expect(json.amount).to.eql(0); });",
+        "pm.test('Booking still cancelled', function () { pm.expect(json.bookingStatus).to.eql('CANCELLED'); });"
+      ]
+    ),
+    item('POST /api/bookings/{{refundBookingId}}/refund - idempotent (already refunded)',
+      req('POST', '/api/bookings/{{refundBookingId}}/refund', { body: '{}' }),
+      [
+        "pm.test('Status is 200 OK', function () { pm.response.to.have.status(200); });",
+        "pm.test('Returns same refund', function () {",
+        "    pm.expect(pm.response.json().refundId).to.eql(Number(pm.collectionVariables.get('refundId')));",
+        "});"
+      ]
+    ),
+    item('POST /api/bookings/{{refundBookingId}}/refund - another user (403)',
+      req('POST', '/api/bookings/{{refundBookingId}}/refund', {
+        auth: 'noauth',
+        authHeader: 'Bearer {{amyAccessToken}}',
+        body: '{}'
+      }),
+      testStatus(403, 'Status is 403 Forbidden')
+    ),
+    item('GET /api/refunds/{{refundId}} - missing token (401)',
+      req('GET', '/api/refunds/{{refundId}}', { auth: 'noauth' }),
+      testStatus(401, 'Status is 401 Unauthorized')
+    )
+  ])
+]);
+
 const securityFolder = folder('Security Edge Cases', 'Protected endpoints must reject missing, malformed, or wrong-type JWT.', [
   item('POST /api/bookings/book-show-seats - missing token (401)',
     req('POST', '/api/bookings/book-show-seats', {
@@ -1571,8 +1743,9 @@ const collection = {
 5. Auth → Login seed user (or signup + login) → Auth edge cases
 6. Bookings → Edge cases validation → Edge cases business rules → Happy path → Real-time show seats (edge cases then happy path)
 7. Payments → Edge cases validation → Edge cases business rules → Webhooks (server-to-server) → Happy path (run in this order; seats 6–9 used in business rules and webhooks first)
-8. Tickets → Edge cases validation → Edge cases business rules → Happy path (requires Payments happy path for auto-issued ticket)
-9. Security Edge Cases
+8. Refunds → Happy path → Edge cases (policy-based refunds; run after Auth login; uses seats 1-2 and show seats 1-2, 5-6)
+9. Tickets → Edge cases validation → Edge cases business rules → Happy path (requires Payments happy path for auto-issued ticket)
+10. Security Edge Cases
 
 **Prerequisites:** MySQL — run \`db/seed_bmsdec24.sql\` after first start. H2 profile — demo data loads automatically.
 
@@ -1590,7 +1763,13 @@ const collection = {
 
 **Hold expiry (automated):** BookingHoldExpiryScheduler runs every \`bms.booking.hold-expiry-interval-ms\` (default 120000 = 2 min). It releases PENDING bookings past \`holdExpiresAt\`, syncs Seat + ShowSeat to AVAILABLE, and records BookingEvent EXPIRED. Audit trail: \`GET /api/bookings/{bookingId}/events\` (HELD, EXPIRED, CONFIRMED, CANCELLED).
 
-**Seed reference:** Theatre 1 movies 1,2 — seats 1-2 AVAILABLE, 3-4 BOOKED, 5 BLOCKED. Theatre 2 movies 1,3 — seats 6-9 AVAILABLE. Seed users: john.seed@example.com / Password@123 (USER), admin.seed@example.com (ADMIN)`,
+**Refunds & cancellation policy:**
+- Policies (hours before show → refund %): 48h→100%, 24h→50%, 12h→25%, <12h→0%
+- \`POST /api/bookings/{id}/refund\` — evaluates policy, processes gateway refund, cancels booking
+- \`GET /api/refunds/{id}\` — refund details (owner, ADMIN, or PARTNER)
+- Bookings without a show default to 100% refund
+
+**Seed reference:** Theatre 1 movies 1,2 — seats 1-2 AVAILABLE, 3-4 BOOKED, 5 BLOCKED. Theatre 2 movies 1,3 — seats 6-9 AVAILABLE. Show 3 @ Phoenix starts in ~30h (50% refund). Show 1 @ Orion starts in ~2h (0% refund). Seed users: john.seed@example.com / Password@123 (USER), admin.seed@example.com (ADMIN)`,
     schema: 'https://schema.getpostman.com/json/collection/v2.1.0/collection.json'
   },
   auth: {
@@ -1605,6 +1784,7 @@ const collection = {
     authFolder,
     bookingsFolder,
     paymentsFolder,
+    refundsFolder,
     ticketsFolder,
     securityFolder
   ],
@@ -1677,7 +1857,15 @@ const collection = {
     { key: 'ticketQrPayloadPay', value: '', type: 'string' },
     { key: 'ticketBookingReferencePay', value: '', type: 'string' },
     { key: 'ticketPendingBookingId', value: '', type: 'string' },
-    { key: 'ticketRevokeReference', value: '', type: 'string' }
+    { key: 'ticketRevokeReference', value: '', type: 'string' },
+    { key: 'refundBookingId', value: '', type: 'string' },
+    { key: 'refundPaymentId', value: '', type: 'string' },
+    { key: 'refundId', value: '', type: 'string' },
+    { key: 'refundShowBookingId', value: '', type: 'string' },
+    { key: 'refundShowPaymentId', value: '', type: 'string' },
+    { key: 'refundPendingBookingId', value: '', type: 'string' },
+    { key: 'refundNoMoneyBookingId', value: '', type: 'string' },
+    { key: 'refundNoMoneyPaymentId', value: '', type: 'string' }
   ]
 };
 

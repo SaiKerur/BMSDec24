@@ -43,4 +43,15 @@ public class RazorpayPaymentGateway implements PaymentGateway {
             throw new PaymentGatewayException("Razorpay payment verification failed: " + e.getMessage(), e);
         }
     }
+
+    @Override
+    public GatewayRefundResult refund(GatewayRefundRequest request) {
+        try {
+            return razorpayClientAdapter.createRefund(request);
+        } catch (PaymentGatewayException e) {
+            throw e;
+        } catch (RuntimeException e) {
+            throw new PaymentGatewayException("Razorpay refund failed: " + e.getMessage(), e);
+        }
+    }
 }

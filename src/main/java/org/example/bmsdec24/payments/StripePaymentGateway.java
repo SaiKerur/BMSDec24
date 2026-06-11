@@ -43,4 +43,15 @@ public class StripePaymentGateway implements PaymentGateway {
             throw new PaymentGatewayException("Stripe payment verification failed: " + e.getMessage(), e);
         }
     }
+
+    @Override
+    public GatewayRefundResult refund(GatewayRefundRequest request) {
+        try {
+            return stripeClientAdapter.createRefund(request);
+        } catch (PaymentGatewayException e) {
+            throw e;
+        } catch (RuntimeException e) {
+            throw new PaymentGatewayException("Stripe refund failed: " + e.getMessage(), e);
+        }
+    }
 }

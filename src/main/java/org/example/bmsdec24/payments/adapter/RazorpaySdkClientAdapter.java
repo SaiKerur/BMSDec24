@@ -9,6 +9,8 @@ import org.example.bmsdec24.exceptions.InvalidWebhookSignatureException;
 import org.example.bmsdec24.exceptions.PaymentGatewayException;
 import org.example.bmsdec24.payments.GatewayChargeRequest;
 import org.example.bmsdec24.payments.GatewayOrder;
+import org.example.bmsdec24.payments.GatewayRefundRequest;
+import org.example.bmsdec24.payments.GatewayRefundResult;
 import org.example.bmsdec24.payments.GatewayVerificationRequest;
 import org.example.bmsdec24.payments.GatewayVerificationResult;
 import org.example.bmsdec24.payments.GatewayWebhookPayload;
@@ -119,6 +121,22 @@ public class RazorpaySdkClientAdapter implements RazorpayClientAdapter {
                 paymentId,
                 succeeded,
                 failureReason);
+    }
+
+    @Override
+    public GatewayRefundResult createRefund(GatewayRefundRequest request) {
+        try {
+            String paymentId = request.getGatewayPaymentReference();
+            if (paymentId == null || paymentId.isBlank()) {
+                return GatewayRefundResult.failure("Razorpay payment reference is required for refund");
+            }
+            JSONObject refundRequest = new JSONObject();
+            refundRequest.put("amount", toMinorUnits(request.getAmount()));
+            com.razorpay.Refund refund = client.payments.refund(paymentId, refundRequest);
+            return GatewayRefundResult.success(refund.get("id"));
+        } catch (RazorpayException e) {
+            return GatewayRefundResult.failure("Razorpay refund failed: " + e.getMessage());
+        }
     }
 
     private int toMinorUnits(double amount) {

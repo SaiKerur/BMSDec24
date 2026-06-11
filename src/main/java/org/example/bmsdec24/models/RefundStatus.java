@@ -1,9 +1,8 @@
 package org.example.bmsdec24.models;
 
-public enum PaymentStatus {
+public enum RefundStatus {
     PENDING,
     SUCCESS,
     FAILED,
-    REFUNDED,
-    PARTIALLY_REFUNDED
+    SKIPPED
 }

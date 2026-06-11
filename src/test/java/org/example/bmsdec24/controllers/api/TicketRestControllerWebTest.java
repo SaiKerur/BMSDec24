@@ -56,6 +56,9 @@ class TicketRestControllerWebTest {
     private org.example.bmsdec24.services.BookingEventService bookingEventService;
 
     @MockBean
+    private org.example.bmsdec24.services.RefundService refundService;
+
+    @MockBean
     private BookingRepository bookingRepository;
 
     @MockBean
