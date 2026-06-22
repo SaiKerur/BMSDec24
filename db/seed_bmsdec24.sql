@@ -61,30 +61,32 @@ INSERT INTO cities (id, name, created_at, updated_at) VALUES
   (6, 'Kolkata',   NOW(), NOW()),
   (7, 'Pune',      NOW(), NOW());
 
-INSERT INTO movies (id, title, genre, created_at, updated_at) VALUES
-  (1,  'Action Blast',        'ACTION',  NOW(), NOW()),
-  (2,  'RomCom Nights',       'ROM_COM', NOW(), NOW()),
-  (3,  'Laugh Out Loud',      'COMEDY',  NOW(), NOW()),
-  (4,  'Skyfall Revenge',     'ACTION',  NOW(), NOW()),
-  (5,  'Midnight Chase',      'ACTION',  NOW(), NOW()),
-  (6,  'Steel Horizon',       'ACTION',  NOW(), NOW()),
-  (7,  'Dragon Fury',         'ACTION',  NOW(), NOW()),
-  (8,  'Code Red',            'ACTION',  NOW(), NOW()),
-  (9,  'Velocity X',          'ACTION',  NOW(), NOW()),
-  (10, 'Love in Paris',       'ROM_COM', NOW(), NOW()),
-  (11, 'First Date Diaries',  'ROM_COM', NOW(), NOW()),
-  (12, 'Hearts & Coffee',     'ROM_COM', NOW(), NOW()),
-  (13, 'Monsoon Melody',      'ROM_COM', NOW(), NOW()),
-  (14, 'Forever Yours',       'ROM_COM', NOW(), NOW()),
-  (15, 'Stand-Up Sunday',     'COMEDY',  NOW(), NOW()),
-  (16, 'Office Chaos',        'COMEDY',  NOW(), NOW()),
-  (17, 'Wedding Crashers 2',  'COMEDY',  NOW(), NOW()),
-  (18, 'Laugh Riot',          'COMEDY',  NOW(), NOW()),
-  (19, 'Funny Bones',         'COMEDY',  NOW(), NOW()),
-  (20, 'Prank Patrol',        'COMEDY',  NOW(), NOW()),
-  (21, 'Turbo Squad',         'ACTION',  NOW(), NOW()),
-  (22, 'Sunset Serenade',     'ROM_COM', NOW(), NOW()),
-  (23, 'Giggle Factory',      'COMEDY',  NOW(), NOW());
+-- status drives the catalog: NOW_SHOWING appears under "Now Showing", COMING_SOON under "Coming Soon".
+-- language/runtime/certification/synopsis are shown on the movie detail page.
+INSERT INTO movies (id, title, genre, language, runtime, certification, synopsis, release_date, status, created_at, updated_at) VALUES
+  (1,  'Action Blast',        'ACTION',  'English', 142, 'UA', 'A rogue agent races against time to stop a global cyber-attack.',        DATE_ADD(CURDATE(), INTERVAL -14 DAY), 'NOW_SHOWING', NOW(), NOW()),
+  (2,  'RomCom Nights',       'ROM_COM', 'Hindi',   118, 'U',  'Two strangers keep meeting on late-night metro rides and fall in love.', DATE_ADD(CURDATE(), INTERVAL  -7 DAY), 'NOW_SHOWING', NOW(), NOW()),
+  (3,  'Laugh Out Loud',      'COMEDY',  'English', 105, 'U',  'A stand-up comic''s disastrous wedding week becomes his best material.',  DATE_ADD(CURDATE(), INTERVAL -21 DAY), 'NOW_SHOWING', NOW(), NOW()),
+  (4,  'Skyfall Revenge',     'ACTION',  'English', 138, 'UA', 'A retired sniper is pulled back for one last mission of vengeance.',     DATE_ADD(CURDATE(), INTERVAL -10 DAY), 'NOW_SHOWING', NOW(), NOW()),
+  (5,  'Midnight Chase',      'ACTION',  'Hindi',   126, 'UA', 'A detective hunts a thief across the city in a single night.',           DATE_ADD(CURDATE(), INTERVAL  -5 DAY), 'NOW_SHOWING', NOW(), NOW()),
+  (6,  'Steel Horizon',       'ACTION',  'English', 150, 'UA', 'A naval crew defends a coastline against an unknown force.',             DATE_ADD(CURDATE(), INTERVAL -18 DAY), 'NOW_SHOWING', NOW(), NOW()),
+  (7,  'Dragon Fury',         'ACTION',  'Tamil',   134, 'UA', 'A martial artist seeks the truth behind his master''s death.',           DATE_ADD(CURDATE(), INTERVAL  -3 DAY), 'NOW_SHOWING', NOW(), NOW()),
+  (8,  'Code Red',            'ACTION',  'English', 121, 'UA', 'A hacker and a cop team up to stop a citywide blackout.',                DATE_ADD(CURDATE(), INTERVAL  -9 DAY), 'NOW_SHOWING', NOW(), NOW()),
+  (9,  'Velocity X',          'ACTION',  'English', 119, 'UA', 'Street racers are recruited for a high-stakes heist.',                   DATE_ADD(CURDATE(), INTERVAL -12 DAY), 'NOW_SHOWING', NOW(), NOW()),
+  (10, 'Love in Paris',       'ROM_COM', 'Hindi',   122, 'U',  'A travel blogger finds unexpected romance in the city of light.',        DATE_ADD(CURDATE(), INTERVAL  -6 DAY), 'NOW_SHOWING', NOW(), NOW()),
+  (11, 'First Date Diaries',  'ROM_COM', 'English', 110, 'U',  'Two app-matched singles relive their awkward first dates.',              DATE_ADD(CURDATE(), INTERVAL  -4 DAY), 'NOW_SHOWING', NOW(), NOW()),
+  (12, 'Hearts & Coffee',     'ROM_COM', 'English', 115, 'U',  'A barista and a regular customer slowly fall for each other.',           DATE_ADD(CURDATE(), INTERVAL  -8 DAY), 'NOW_SHOWING', NOW(), NOW()),
+  (13, 'Monsoon Melody',      'ROM_COM', 'Hindi',   128, 'U',  'Two musicians reconnect during a rainy season in Kochi.',                DATE_ADD(CURDATE(), INTERVAL -15 DAY), 'NOW_SHOWING', NOW(), NOW()),
+  (14, 'Forever Yours',       'ROM_COM', 'English', 117, 'U',  'Childhood friends realise their feelings on the eve of a wedding.',      DATE_ADD(CURDATE(), INTERVAL -11 DAY), 'NOW_SHOWING', NOW(), NOW()),
+  (15, 'Stand-Up Sunday',     'COMEDY',  'English', 102, 'U',  'Five comics compete for one spot on a famous late-night show.',          DATE_ADD(CURDATE(), INTERVAL -20 DAY), 'NOW_SHOWING', NOW(), NOW()),
+  (16, 'Office Chaos',        'COMEDY',  'Hindi',   108, 'U',  'A startup''s launch day spirals into hilarious disaster.',               DATE_ADD(CURDATE(), INTERVAL  -2 DAY), 'NOW_SHOWING', NOW(), NOW()),
+  (17, 'Wedding Crashers 2',  'COMEDY',  'English', 113, 'UA', 'The crashers are back, this time at a billionaire''s gala.',             DATE_ADD(CURDATE(), INTERVAL -16 DAY), 'NOW_SHOWING', NOW(), NOW()),
+  (18, 'Laugh Riot',          'COMEDY',  'English', 100, 'U',  'A small-town troupe takes their chaotic act to the big city.',           DATE_ADD(CURDATE(), INTERVAL -13 DAY), 'NOW_SHOWING', NOW(), NOW()),
+  (19, 'Funny Bones',         'COMEDY',  'Tamil',   104, 'U',  'A doctor moonlights as a comedian to keep his clinic afloat.',           DATE_ADD(CURDATE(), INTERVAL  -1 DAY), 'NOW_SHOWING', NOW(), NOW()),
+  (20, 'Prank Patrol',        'COMEDY',  'Hindi',    96, 'U',  'A group of friends turn their pranks into a viral sensation.',           DATE_ADD(CURDATE(), INTERVAL -17 DAY), 'NOW_SHOWING', NOW(), NOW()),
+  (21, 'Turbo Squad',         'ACTION',  'English', 156, 'UA', 'A rookie pilot joins an elite squad to defend a frontier colony.',       DATE_ADD(CURDATE(), INTERVAL  30 DAY), 'COMING_SOON', NOW(), NOW()),
+  (22, 'Sunset Serenade',     'ROM_COM', 'Hindi',   124, 'U',  'Old love letters resurface during a seaside summer.',                    DATE_ADD(CURDATE(), INTERVAL  45 DAY), 'COMING_SOON', NOW(), NOW()),
+  (23, 'Giggle Factory',      'COMEDY',  'English', 109, 'U',  'A failing toy company bets everything on one outrageous idea.',          DATE_ADD(CURDATE(), INTERVAL  21 DAY), 'COMING_SOON', NOW(), NOW());
 
 INSERT INTO theatres (id, name, address, city_id, created_at, updated_at) VALUES
   (1,  'Orion PVR',                    'Dr Rajkumar Road, Rajajinagar, Bengaluru', 1, NOW(), NOW()),
@@ -133,10 +135,10 @@ INSERT INTO theatre_movies (theatre_id, movie_id, theatre_name, movie_name) VALU
 
 -- Users (password = BCrypt of 'Password@123')
 INSERT INTO `user` (id, name, email, password, role, created_at, updated_at) VALUES
-  (1, 'John Seed',  'john.seed@example.com',  '$2a$10$4TUqA6m7WkQn3UE6q8xyeecxKMCC7W8e7jQCSNfO8L3v2h4WvW2iC', 'USER',    NOW(), NOW()),
-  (2, 'Amy Seed',   'amy.seed@example.com',   '$2a$10$4TUqA6m7WkQn3UE6q8xyeecxKMCC7W8e7jQCSNfO8L3v2h4WvW2iC', 'USER',    NOW(), NOW()),
-  (3, 'Admin Seed', 'admin.seed@example.com', '$2a$10$4TUqA6m7WkQn3UE6q8xyeecxKMCC7W8e7jQCSNfO8L3v2h4WvW2iC', 'ADMIN',   NOW(), NOW()),
-  (4, 'Partner Seed', 'partner.seed@example.com', '$2a$10$4TUqA6m7WkQn3UE6q8xyeecxKMCC7W8e7jQCSNfO8L3v2h4WvW2iC', 'PARTNER', NOW(), NOW());
+  (1, 'John Seed',  'john.seed@example.com',  '$2a$10$nQltTkZ7bZM6JywiSYyZOu1GtwC/AjPJwtiZqiGSRi/DoTmb9NMy2', 'USER',    NOW(), NOW()),
+  (2, 'Amy Seed',   'amy.seed@example.com',   '$2a$10$nQltTkZ7bZM6JywiSYyZOu1GtwC/AjPJwtiZqiGSRi/DoTmb9NMy2', 'USER',    NOW(), NOW()),
+  (3, 'Admin Seed', 'admin.seed@example.com', '$2a$10$nQltTkZ7bZM6JywiSYyZOu1GtwC/AjPJwtiZqiGSRi/DoTmb9NMy2', 'ADMIN',   NOW(), NOW()),
+  (4, 'Partner Seed', 'partner.seed@example.com', '$2a$10$nQltTkZ7bZM6JywiSYyZOu1GtwC/AjPJwtiZqiGSRi/DoTmb9NMy2', 'PARTNER', NOW(), NOW());
 
 -- Theatre seats (seat_status: AVAILABLE | BLOCKED | BOOKED)
 INSERT INTO seats (id, seat_number, seat_type, price, seat_status, theatre_id, booked_by_user_id, theatre_name, booked_by_user_name, created_at, updated_at) VALUES
