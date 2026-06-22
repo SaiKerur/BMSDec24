@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>BookMyShow</title>
+  <link rel="stylesheet" href="/styles.css" />
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎬</text></svg>" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand" data-nav="home">🎬 <span>Book<b>My</b>Show</span></div>
+    <div class="topbar-right">
+      <select id="citySelect" class="city-select" title="Select city"></select>
+      <div id="authArea" class="auth-area"></div>
+    </div>
+  </header>
+
+  <nav class="breadcrumbs" id="breadcrumbs"></nav>
+
+  <main id="view" class="view"></main>
+
+  <!-- Auth modal -->
+  <div class="modal-overlay" id="authModal" hidden>
+    <div class="modal">
+      <button class="modal-close" id="authModalClose">&times;</button>
+      <div class="tabs">
+        <button class="tab active" data-tab="login">Login</button>
+        <button class="tab" data-tab="signup">Sign up</button>
+      </div>
+
+      <form id="loginForm" class="auth-form">
+        <h2>Welcome back</h2>
+        <input type="email" name="email" placeholder="Email" required value="john.seed@example.com" />
+        <input type="password" name="password" placeholder="Password" required value="Password@123" />
+        <button type="submit" class="btn btn-primary btn-block">Login</button>
+        <p class="hint">Demo: john.seed@example.com / Password@123</p>
+      </form>
+
+      <form id="signupForm" class="auth-form" hidden>
+        <h2>Create account</h2>
+        <input type="text" name="name" placeholder="Full name" required />
+        <input type="email" name="email" placeholder="Email" required />
+        <input type="password" name="password" placeholder="Password" required />
+        <button type="submit" class="btn btn-primary btn-block">Sign up</button>
+      </form>
+
+      <p class="form-error" id="authError"></p>
+    </div>
+  </div>
+
+  <!-- Toast -->
+  <div id="toast" class="toast" hidden></div>
+
+  <script src="/app.js"></script>
+</body>
+</html>
