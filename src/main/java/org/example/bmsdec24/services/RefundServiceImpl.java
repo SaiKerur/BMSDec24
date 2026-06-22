@@ -1,10 +1,12 @@
 package org.example.bmsdec24.services;
 
+import org.example.bmsdec24.dtos.RefundPreviewDto;
 import org.example.bmsdec24.dtos.RefundResponseDto;
 import org.example.bmsdec24.exceptions.InvalidBookingException;
 import org.example.bmsdec24.exceptions.InvalidRefundException;
 import org.example.bmsdec24.exceptions.RefundAlreadyProcessedException;
 import org.example.bmsdec24.exceptions.RefundNotAllowedException;
+import org.example.bmsdec24.models.CancellationPolicy;
 import org.example.bmsdec24.models.Booking;
 import org.example.bmsdec24.models.BookingStatus;
 import org.example.bmsdec24.models.Payment;
@@ -149,6 +151,62 @@ public class RefundServiceImpl implements RefundService {
         Refund refund = refundRepository.findDetailedById(refundId)
                 .orElseThrow(() -> new InvalidRefundException("No refund found with id: " + refundId));
         return RefundResponseDto.from(refund);
+    }
+
+    @Transactional(readOnly = true)
+    @Override
+    public RefundPreviewDto previewRefund(int bookingId) throws InvalidRefundException {
+        Booking booking = bookingRepository.findDetailedById(bookingId)
+                .orElseThrow(() -> new InvalidRefundException("No booking found with id: " + bookingId));
+
+        BookingStatus status = booking.getStatus();
+
+        if (status == BookingStatus.CANCELLED) {
+            RefundPreviewDto dto = RefundPreviewDto.ineligible(bookingId, status,
+                    "This booking is already cancelled.");
+            dto.setAlreadyRefunded(refundRepository.existsByBooking_IdAndStatus(bookingId, RefundStatus.SUCCESS)
+                    || refundRepository.existsByBooking_IdAndStatus(bookingId, RefundStatus.SKIPPED));
+            return dto;
+        }
+
+        if (status != BookingStatus.CONFIRMED) {
+            return RefundPreviewDto.ineligible(bookingId, status,
+                    "Only confirmed, paid bookings can be cancelled for a refund.");
+        }
+
+        if (refundRepository.existsByBooking_IdAndStatus(bookingId, RefundStatus.SUCCESS)
+                || refundRepository.existsByBooking_IdAndStatus(bookingId, RefundStatus.PENDING)) {
+            RefundPreviewDto dto = RefundPreviewDto.ineligible(bookingId, status,
+                    "A refund has already been initiated for this booking.");
+            dto.setAlreadyRefunded(true);
+            return dto;
+        }
+
+        Payment payment = paymentRepository.findFirstByBooking_IdAndStatus(bookingId, PaymentStatus.SUCCESS)
+                .orElse(null);
+        if (payment == null) {
+            return RefundPreviewDto.ineligible(bookingId, status,
+                    "No successful payment found for this booking, so there is nothing to refund.");
+        }
+
+        RefundPreviewDto dto = new RefundPreviewDto();
+        dto.setBookingId(bookingId);
+        dto.setBookingStatus(status);
+        dto.setPaidAmount(payment.getAmount());
+
+        try {
+            CancellationPolicyEvaluation evaluation = cancellationPolicyService.evaluate(booking, payment.getAmount());
+            dto.setEligible(true);
+            dto.setRefundPercentage(evaluation.getRefundPercentage());
+            dto.setRefundAmount(evaluation.getRefundAmount());
+            dto.setHoursUntilShow(evaluation.getHoursUntilShow());
+            CancellationPolicy policy = evaluation.getPolicy();
+            dto.setPolicyDescription(policy != null ? policy.getDescription() : null);
+        } catch (RefundNotAllowedException e) {
+            dto.setEligible(false);
+            dto.setReason(e.getMessage());
+        }
+        return dto;
     }
 
     private void cancelBookingSafely(int bookingId) throws InvalidRefundException {

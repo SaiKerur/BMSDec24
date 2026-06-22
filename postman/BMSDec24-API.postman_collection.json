@@ -7880,6 +7880,45 @@
               "response": []
             },
             {
+              "name": "GET /api/bookings/{{refundShowBookingId}}/refund-preview - 50% preview (no mutation)",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('Status is 200 OK', function () { pm.response.to.have.status(200); });",
+                      "const json = pm.response.json();",
+                      "pm.test('Eligible for refund', function () { pm.expect(json.eligible).to.be.true; });",
+                      "pm.test('50% policy previewed', function () { pm.expect(json.refundPercentage).to.eql(50); });",
+                      "pm.test('Refund amount and paid amount present', function () {",
+                      "    pm.expect(json.refundAmount).to.be.above(0);",
+                      "    pm.expect(json.paidAmount).to.be.above(0);",
+                      "});"
+                    ]
+                  }
+                }
+              ],
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/api/bookings/{{refundShowBookingId}}/refund-preview",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "bookings",
+                    "{{refundShowBookingId}}",
+                    "refund-preview"
+                  ]
+                },
+                "description": "Read-only preview of the refund policy outcome before cancelling. Powers the web UI \"Cancel & refund\" confirmation."
+              },
+              "response": []
+            },
+            {
               "name": "POST /api/bookings/{{refundShowBookingId}}/refund - 50% partial refund",
               "event": [
                 {
@@ -8119,6 +8158,111 @@
                   "mode": "raw",
                   "raw": "{}"
                 }
+              },
+              "response": []
+            },
+            {
+              "name": "GET /api/bookings/{{refundPendingBookingId}}/refund-preview - PENDING not eligible (200)",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('Status is 200 OK', function () { pm.response.to.have.status(200); });",
+                      "const json = pm.response.json();",
+                      "pm.test('Not eligible with reason', function () {",
+                      "    pm.expect(json.eligible).to.be.false;",
+                      "    pm.expect(json.reason).to.be.a('string').and.not.empty;",
+                      "});"
+                    ]
+                  }
+                }
+              ],
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/api/bookings/{{refundPendingBookingId}}/refund-preview",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "bookings",
+                    "{{refundPendingBookingId}}",
+                    "refund-preview"
+                  ]
+                },
+                "description": ""
+              },
+              "response": []
+            },
+            {
+              "name": "GET /api/bookings/0/refund-preview (400)",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('Status is 400 Bad Request', function () {",
+                      "    pm.response.to.have.status(400);",
+                      "});"
+                    ]
+                  }
+                }
+              ],
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/api/bookings/0/refund-preview",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "bookings",
+                    "0",
+                    "refund-preview"
+                  ]
+                },
+                "description": ""
+              },
+              "response": []
+            },
+            {
+              "name": "GET /api/bookings/999999/refund-preview (404)",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('Status is 404 Not Found', function () {",
+                      "    pm.response.to.have.status(404);",
+                      "});"
+                    ]
+                  }
+                }
+              ],
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/api/bookings/999999/refund-preview",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "bookings",
+                    "999999",
+                    "refund-preview"
+                  ]
+                },
+                "description": ""
               },
               "response": []
             },
@@ -9739,6 +9883,43 @@
                 "api",
                 "payments",
                 "1"
+              ]
+            },
+            "description": "",
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "GET /api/bookings/1/refund-preview - missing token (401)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 401 Unauthorized', function () {",
+                  "    pm.response.to.have.status(401);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/bookings/1/refund-preview",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "bookings",
+                "1",
+                "refund-preview"
               ]
             },
             "description": "",

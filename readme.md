@@ -4,13 +4,14 @@ Spring Boot 3.4 REST API for movie ticket booking with JWT authentication, seat 
 
 ## Features
 
-- **Catalog discovery** — cities, theatres, movies, live seat layout (public read APIs)
+- **Catalog discovery** — cities, theatres, movies, search, live seat layout (public read APIs)
 - **User signup** with BCrypt password hashing
 - **JWT auth** — login, refresh, and `/api/auth/me`
 - **Booking lifecycle** — block seats (5-minute hold), confirm, cancel, cleanup expired holds
+- **Cancellation & refunds** — policy-based refunds with a no-mutation **refund preview** endpoint
 - **Payments** — choose Stripe or Razorpay per transaction; mock mode for local/Postman testing
 - **Centralized API errors** — consistent `ApiErrorDto` responses
-- **Web UI (SPA)** — vanilla-JS single-page app served from `static/`, see [Frontend (web UI)](#frontend-web-ui)
+- **Web UI (SPA)** — vanilla-JS single-page app served from `static/` with search/filters, date+theatre showtime grouping, cancel-&-refund flow, profile, printable/shareable tickets, and shareable deep links — see [Frontend (web UI)](#frontend-web-ui)
 
 ## Tech stack
 
@@ -99,20 +100,30 @@ Signup → Login (JWT) → Browse catalog → Book seats (PENDING hold)
 
 A dependency-free vanilla-JS SPA lives in `src/main/resources/static/` (`index.html`, `app.js`, `styles.css`) and is served by Spring Boot at the app root (e.g. http://localhost:8087 with the `h2` profile). It talks to the same public + authenticated APIs documented below.
 
-Flow: **Home (Now Showing / Coming Soon)** → **Movie detail + showtimes** → **Seat map** → **Checkout (payment)** → **Ticket (QR)** → **My Bookings**.
+Flow: **Home (search / filters / Now Showing / Coming Soon)** → **Movie detail (date tabs + theatre groups)** → **Seat map** → **Checkout (payment)** → **Ticket (QR, print, calendar, share)** → **My Bookings / Profile (cancel & refund)**.
 
-Polish included in this UI:
+### v2 features
 
-- **Seat-hold countdown** — checkout shows a live `mm:ss` timer driven by the booking's `holdExpiresAt`; on expiry it toasts and redirects home (the 5-minute PENDING hold).
+- **Search + richer filtering** — a topbar search box (debounced, backed by `GET /api/catalog/movies/search`) plus language and certification dropdowns, genre chips, and a **Coming soon** toggle. All filters are URL-encoded (e.g. `#/home?q=action&genre=ACTION&lang=Hindi&cert=UA&soon=1`) so any filtered view is shareable and restored on reload.
+- **Cancellation & refunds** — confirmed bookings show a **Cancel & refund** action that first calls `GET /api/bookings/{id}/refund-preview` to show the policy %, paid amount, and exact refund amount in a confirmation dialog, then processes the refund via `POST /api/bookings/{id}/refund` and lands on a refund-status view (`#/refund/{refundId}` → `GET /api/refunds/{id}`).
+- **Ticket improvements** — the ticket page adds **Print / Save PDF** (print stylesheet), **Add to calendar** (downloads an `.ics` event built from the show time + runtime), and **Share** (Web Share API with clipboard fallback).
+- **User profile** — `#/profile` uses `GET /api/auth/me` to show the account, role, and full booking history with **Upcoming / Past / Cancelled** filters, plus a **Log out everywhere** action.
+- **Showtime grouping** — movie detail groups shows into **day tabs** (Today / Tomorrow / weekday) with a native date picker, and within each day groups showtimes **by theatre**; the selected day is deep-linked (`#/movie/{id}?date=YYYY-MM-DD`).
+- **Stackable notifications + confirm dialogs** — toasts now stack and auto-dismiss (each manually dismissible), and destructive actions (cancel booking, log out everywhere) go through an accessible confirmation dialog.
+- **Persisted city + deep links** — the selected city persists in `localStorage`, and filter/date state lives in the URL so links restore the same view.
+
+### Polish (v1)
+
+- **Seat-hold countdown** — checkout shows a live `mm:ss` timer driven by the booking's `holdExpiresAt`; on expiry it notifies and redirects home (the 5-minute PENDING hold).
 - **Real seat-page header** — the seat map shows the movie title, theatre, screen, and showtime (carried over from the movie page via cached show meta, persisted in `sessionStorage`).
 - **Per-seat price + live total** — each available seat renders its price and the sticky summary bar keeps a running total as seats are selected.
 - **Skeleton loaders** — card/grid and detail skeletons replace the bare spinner on the home and movie pages.
 - **Friendly error state** — failed loads render a retryable error panel (offline-aware) instead of a raw message.
 - **Auth modal UX** — show/hide password toggle, inline field validation, a submit spinner, and a **Fill demo credentials** button (no prefilled inputs).
-- **Accessibility** — seat buttons expose `aria-pressed`/`aria-label`, the auth modal traps focus and closes on `Esc`, and navigation uses real `<a>`/`<button>` elements.
+- **Accessibility** — seat buttons expose `aria-pressed`/`aria-label`, the auth and confirm dialogs trap focus and close on `Esc`, and navigation uses real `<a>`/`<button>` elements.
 - **Mobile seat map** — rows stay aligned inside a horizontal-scroll container instead of wrapping.
 
-> **Note:** to power per-seat pricing, `GET /api/shows/{showId}/availability` now returns `price` and `seatType` on each entry in `seats[]` (in addition to `showSeatId`, `seatId`, `seatNumber`, `seatStatus`, `updatedAtEpochMs`).
+> **Note:** to power per-seat pricing, `GET /api/shows/{showId}/availability` returns `price` and `seatType` on each entry in `seats[]` (in addition to `showSeatId`, `seatId`, `seatNumber`, `seatStatus`, `updatedAtEpochMs`).
 
 ## API reference
 
@@ -125,6 +136,10 @@ Polish included in this UI:
 | GET | `/api/catalog/cities/{cityId}/theatres` | Theatres in a city |
 | GET | `/api/catalog/theatres/{theatreId}` | Theatre detail + movies |
 | GET | `/api/catalog/movies` | List movies (`?genre=ACTION` optional) |
+| GET | `/api/catalog/movies/search` | Search movies by title/cast (`?q=`) |
+| GET | `/api/catalog/movies/now-showing` | Now-showing movies (`?cityId=` optional) |
+| GET | `/api/catalog/movies/coming-soon` | Coming-soon movies |
+| GET | `/api/catalog/movies/{movieId}` | Movie detail (poster, cast, certification, …) |
 | GET | `/api/catalog/theatres/{theatreId}/seats` | Seat layout and status |
 | GET | `/api/shows/movies/{movieId}` | Showtimes for a movie |
 | GET | `/api/shows/theatres/{theatreId}` | Showtimes at a theatre |
@@ -138,11 +153,18 @@ Polish included in this UI:
 | Method | Path | Description |
 |--------|------|-------------|
 | GET | `/api/auth/me` | Current user |
+| GET | `/api/users/me/bookings` | My bookings (`?status=` optional) |
 | GET | `/api/bookings/{bookingId}` | Booking details |
 | POST | `/api/bookings/book` | Create booking (seat hold) |
+| POST | `/api/bookings/book-show-seats` | Create booking from showtime seats |
 | POST | `/api/bookings/{bookingId}/confirm` | Confirm booking |
 | POST | `/api/bookings/{bookingId}/cancel` | Cancel booking |
-| POST | `/api/bookings/cleanup-expired` | Release expired holds |
+| GET | `/api/bookings/{bookingId}/refund-preview` | Preview refund policy/amount (no mutation) |
+| POST | `/api/bookings/{bookingId}/refund` | Process policy-based refund and cancel |
+| GET | `/api/refunds/{refundId}` | Refund details |
+| GET | `/api/bookings/{bookingId}/ticket` | Fetch issued ticket |
+| POST | `/api/bookings/{bookingId}/issue-ticket` | Issue ticket for confirmed booking |
+| POST | `/api/bookings/cleanup-expired` | Release expired holds (ADMIN/PARTNER) |
 | GET | `/api/payments/providers` | Available gateways |
 | POST | `/api/payments/initiate` | Start payment |
 | POST | `/api/payments/callback` | Complete / fail payment |
@@ -172,7 +194,7 @@ After `db/seed_bmsdec24.sql`:
 
 ## Postman
 
-Import `postman/BMSDec24-API.postman_collection.json`. The collection has **129+ requests** organized into nested folders (Happy path / Edge cases per API area) covering validation, auth, seat conflicts, payment signatures, and JWT security.
+Import `postman/BMSDec24-API.postman_collection.json`. The collection has **240+ requests** organized into nested folders (Happy path / Edge cases per API area) covering validation, auth, seat conflicts, payment signatures, refund policy + preview, and JWT security.
 
 Regenerate after editing `postman/build-collection.js`:
 
