@@ -122,14 +122,62 @@ const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "
 const inr = (n) => `₹${Number(n || 0).toFixed(0)}`;
 const fmtDateTime = (d) => new Date(d).toLocaleString(undefined, { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
 
-let toastTimer;
-function toast(msg, type = "") {
-  const el = $("#toast");
-  el.textContent = msg;
-  el.className = `toast ${type}`;
-  el.hidden = false;
-  clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => (el.hidden = true), 3200);
+// ---------------------------------------------------------------------------
+// Stackable notifications — multiple toasts coexist and auto-dismiss; each can
+// be dismissed manually. `toast()` is kept as a thin alias for older call sites.
+// ---------------------------------------------------------------------------
+const NOTIF_ICONS = { success: "✓", error: "⚠️", info: "ℹ️", "": "ℹ️" };
+function notify(msg, type = "", { timeout = 3600 } = {}) {
+  const host = $("#notifications");
+  if (!host) return;
+  const el = document.createElement("div");
+  el.className = `notification ${type || "info"}`;
+  el.setAttribute("role", type === "error" ? "alert" : "status");
+  el.innerHTML = `
+    <span class="notif-icon" aria-hidden="true">${NOTIF_ICONS[type] || NOTIF_ICONS.info}</span>
+    <span class="notif-msg"></span>
+    <button class="notif-close" type="button" aria-label="Dismiss notification">&times;</button>`;
+  el.querySelector(".notif-msg").textContent = msg;
+  const remove = () => {
+    if (el.classList.contains("leaving")) return;
+    el.classList.add("leaving");
+    setTimeout(() => el.remove(), 220);
+  };
+  el.querySelector(".notif-close").onclick = remove;
+  host.appendChild(el);
+  if (timeout > 0) setTimeout(remove, timeout);
+  return el;
+}
+
+function toast(msg, type = "") { return notify(msg, type); }
+
+// ---------------------------------------------------------------------------
+// Confirmation dialog — promise-based; resolves true on confirm, false on
+// cancel/Esc/backdrop. Used to guard destructive actions like cancelling.
+// ---------------------------------------------------------------------------
+let confirmResolver = null;
+let confirmLastFocus = null;
+function confirmDialog({ title = "Are you sure?", body = "", confirmLabel = "Confirm", cancelLabel = "Cancel", danger = false } = {}) {
+  const modal = $("#confirmModal");
+  confirmLastFocus = document.activeElement;
+  $("#confirmTitle").textContent = title;
+  $("#confirmBody").innerHTML = body;
+  const okBtn = $("#confirmOk");
+  const cancelBtn = $("#confirmCancel");
+  okBtn.textContent = confirmLabel;
+  cancelBtn.textContent = cancelLabel;
+  okBtn.className = `btn ${danger ? "btn-danger" : "btn-primary"}`;
+  modal.hidden = false;
+  setTimeout(() => okBtn.focus(), 0);
+  return new Promise((resolve) => { confirmResolver = resolve; });
+}
+
+function closeConfirm(result) {
+  const modal = $("#confirmModal");
+  if (modal.hidden) return;
+  modal.hidden = true;
+  if (confirmResolver) { confirmResolver(result); confirmResolver = null; }
+  if (confirmLastFocus && typeof confirmLastFocus.focus === "function") confirmLastFocus.focus();
 }
 
 function loading() { view().innerHTML = `<div class="spinner" role="status" aria-label="Loading"></div>`; }
@@ -228,14 +276,49 @@ const routes = {
   checkout: renderCheckout, // checkout/:bookingId
   bookings: renderMyBookings,
   ticket: renderTicket, // ticket/:bookingId
+  profile: renderProfile,
+  refund: renderRefund, // refund/:refundId
 };
 
-function navigate(route) { window.location.hash = `#/${route}`; }
+// navigate accepts either a plain route string ("movie/5") or an options object
+// with a query map: navigate("home", { genre: "ACTION" }). Query keys with
+// empty/false values are omitted so links stay clean and shareable.
+function navigate(route, query) {
+  window.location.hash = "#/" + buildHash(route, query);
+}
+
+function buildHash(path, query) {
+  const qs = query ? encodeQuery(query) : "";
+  return qs ? `${path}?${qs}` : path;
+}
+
+function encodeQuery(query) {
+  const params = new URLSearchParams();
+  Object.entries(query || {}).forEach(([k, v]) => {
+    if (v === undefined || v === null || v === "" || v === false) return;
+    params.set(k, v === true ? "1" : String(v));
+  });
+  return params.toString();
+}
 
 function parseHash() {
   const raw = window.location.hash.replace(/^#\/?/, "");
-  const [head, ...rest] = raw.split("/");
-  return { head: head || "", param: rest.join("/") };
+  const [pathPart, queryPart] = raw.split("?");
+  const [head, ...rest] = pathPart.split("/");
+  return {
+    head: head || "",
+    param: rest.join("/"),
+    query: new URLSearchParams(queryPart || ""),
+  };
+}
+
+// Rewrites the query string of the *current* route without adding a history
+// entry — used by filters so the Back button skips intermediate filter states.
+function replaceQuery(query) {
+  const { head, param } = parseHash();
+  const path = param ? `${head}/${param}` : head;
+  const url = `#/${buildHash(path, query)}`;
+  history.replaceState(null, "", url);
 }
 
 function errorState(message) {
@@ -251,14 +334,26 @@ function errorState(message) {
 
 async function router() {
   clearHoldTimer();
-  const { head, param } = parseHash();
+  const { head, param, query } = parseHash();
   const handler = routes[head] || renderHome;
+  syncTopbarSearch(query);
   try {
-    await handler(param);
+    await handler(param, query);
   } catch (e) {
     if (e && e.authFailed) return; // login modal already prompted
     errorState(e && e.message);
   }
+}
+
+// Keep the topbar search input in sync with the URL's ?q= when on Home.
+function syncTopbarSearch(query) {
+  const input = $("#searchInput");
+  if (!input) return;
+  const head = parseHash().head || "home";
+  const q = (head === "home" || head === "") ? (query.get("q") || "") : "";
+  if (document.activeElement !== input) input.value = q;
+  const clear = $("#searchClear");
+  if (clear) clear.hidden = !input.value;
 }
 
 // ---------------------------------------------------------------------------
@@ -268,7 +363,7 @@ function renderAuthArea() {
   const area = $("#authArea");
   if (isLoggedIn()) {
     area.innerHTML = `
-      <span class="user-chip">Hi, <b>${esc(state.user.email.split("@")[0])}</b></span>
+      <button class="user-chip user-chip-btn" data-link="profile" title="View profile">Hi, <b>${esc(state.user.email.split("@")[0])}</b></button>
       <button class="btn btn-sm" data-link="bookings">My Bookings</button>
       <button class="btn btn-sm btn-ghost" id="logoutBtn">Logout</button>`;
     $("#logoutBtn").onclick = () => { clearSession(); toast("Logged out"); navigate("home"); };
@@ -363,41 +458,154 @@ async function loadCities() {
   sel.onchange = () => {
     state.cityId = sel.value;
     localStorage.setItem("bms_cityId", state.cityId);
-    if ((parseHash().head || "home") === "home" || parseHash().head === "") renderHome();
+    const head = parseHash().head || "home";
+    if (head === "home" || head === "" || head === "movie") router();
   };
 }
 
 // ---------------------------------------------------------------------------
 // Views
 // ---------------------------------------------------------------------------
-async function renderHome(filter) {
-  setCrumbs([{ label: "Home" }]);
-  skeletonHome();
-  const genre = sessionStorage.getItem("bms_genre") || "";
+// Small cache so flipping filters doesn't re-hit now-showing/coming-soon every
+// keystroke. Keyed by the active city; search results are fetched on demand.
+let homeCache = { cityId: null, nowShowing: [], comingSoon: [], loaded: false };
+
+async function loadHomeCatalog() {
+  if (homeCache.loaded && homeCache.cityId === String(state.cityId)) return homeCache;
   const cityQ = state.cityId ? `?cityId=${state.cityId}` : "";
   const [nowShowing, comingSoon] = await Promise.all([
     api(`/catalog/movies/now-showing${cityQ}`),
     api(`/catalog/movies/coming-soon`),
   ]);
+  homeCache = { cityId: String(state.cityId), nowShowing, comingSoon, loaded: true };
+  return homeCache;
+}
 
-  const filtered = genre ? nowShowing.filter((m) => m.genre === genre) : nowShowing;
+function readHomeFilters(query) {
+  query = query || new URLSearchParams();
+  return {
+    q: (query.get("q") || "").trim(),
+    genre: query.get("genre") || "",
+    lang: query.get("lang") || "",
+    cert: query.get("cert") || "",
+    soon: query.get("soon") === "1",
+  };
+}
 
-  view().innerHTML = `
-    <h1 class="section-title">Now Showing</h1>
+// Merge a partial filter change into the URL (no new history entry) and re-render.
+function setHomeQuery(patch) {
+  const onHome = (parseHash().head || "home") === "home" || parseHash().head === "";
+  const base = onHome ? readHomeFilters(parseHash().query) : { q: "", genre: "", lang: "", cert: "", soon: false };
+  const merged = { ...base, ...patch };
+  const query = {
+    q: merged.q,
+    genre: merged.genre,
+    lang: merged.lang,
+    cert: merged.cert,
+    soon: merged.soon ? "1" : "",
+  };
+  if (!onHome) {
+    navigate("home", query);
+    return;
+  }
+  replaceQuery(query);
+  renderHome(null, parseHash().query);
+}
+
+async function renderHome(_param, query) {
+  const f = readHomeFilters(query);
+  setCrumbs([{ label: "Home" }]);
+  skeletonHome();
+
+  const { nowShowing, comingSoon } = await loadHomeCatalog();
+  let searchResults = null;
+  if (f.q) {
+    try { searchResults = await api(`/catalog/movies/search?q=${encodeURIComponent(f.q)}`); }
+    catch { searchResults = []; }
+  }
+
+  const universe = [...nowShowing, ...comingSoon, ...(searchResults || [])];
+  const langs = distinct(universe.map((m) => m.language));
+  const certs = distinct(universe.map((m) => m.certification));
+  const genres = distinct(universe.map((m) => m.genre));
+
+  const applyFilters = (list) => list.filter((m) =>
+    (!f.genre || m.genre === f.genre) &&
+    (!f.lang || m.language === f.lang) &&
+    (!f.cert || m.certification === f.cert));
+
+  const bar = homeFilterBar(f, { langs, certs, genres });
+
+  if (f.q) {
+    let results = applyFilters(searchResults || []);
+    if (f.soon) results = results.filter((m) => m.status === "COMING_SOON");
+    view().innerHTML = `
+      <h1 class="section-title">Search results for “${esc(f.q)}”</h1>
+      ${bar}
+      <div class="results-meta">${results.length} result${results.length === 1 ? "" : "s"}</div>
+      ${results.length ? movieGrid(results) : `<div class="empty">No movies match “${esc(f.q)}”.</div>`}`;
+  } else if (f.soon) {
+    const cs = applyFilters(comingSoon);
+    view().innerHTML = `
+      <h1 class="section-title">Coming Soon</h1>
+      ${bar}
+      ${cs.length ? movieGrid(cs, true) : `<div class="empty">No upcoming movies match these filters.</div>`}`;
+  } else {
+    const ns = applyFilters(nowShowing);
+    const cs = applyFilters(comingSoon);
+    view().innerHTML = `
+      <h1 class="section-title">Now Showing</h1>
+      ${bar}
+      ${ns.length ? movieGrid(ns) : `<div class="empty">No movies showing in this city for these filters.</div>`}
+      ${cs.length ? `<h1 class="section-title" style="margin-top:40px">Coming Soon</h1>${movieGrid(cs, true)}` : ""}`;
+  }
+
+  wireHomeFilters();
+}
+
+function homeFilterBar(f, opts) {
+  const genreChips = ["", ...opts.genres.filter(Boolean)]
+    .map((g) => genreChip(g, g ? prettyGenre(g) : "All", f.genre))
+    .join("");
+  const langOptions = optionList(opts.langs, f.lang, "All languages");
+  const certOptions = optionList(opts.certs, f.cert, "All ratings");
+  const hasActive = f.genre || f.lang || f.cert || f.soon || f.q;
+  return `
     <div class="filters">
-      ${genreChip("", "All", genre)}
-      ${genreChip("ACTION", "Action", genre)}
-      ${genreChip("COMEDY", "Comedy", genre)}
-      ${genreChip("ROM_COM", "Rom-Com", genre)}
-    </div>
-    ${filtered.length ? movieGrid(filtered) : `<div class="empty">No movies showing in this city.</div>`}
-    ${comingSoon.length ? `<h1 class="section-title" style="margin-top:40px">Coming Soon</h1>${movieGrid(comingSoon, true)}` : ""}
-  `;
+      ${genreChips}
+      <select class="filter-select" data-filter="lang" aria-label="Filter by language">${langOptions}</select>
+      <select class="filter-select" data-filter="cert" aria-label="Filter by certification">${certOptions}</select>
+      <button type="button" class="chip toggle-chip ${f.soon ? "active" : ""}" data-filter="soon" aria-pressed="${f.soon}">
+        ${f.soon ? "✓ " : ""}Coming soon
+      </button>
+      ${hasActive ? `<button type="button" class="filters-reset" data-filter="reset">Clear filters</button>` : ""}
+    </div>`;
+}
+
+function optionList(values, selected, allLabel) {
+  return [`<option value="">${esc(allLabel)}</option>`]
+    .concat(values.filter(Boolean).map((v) =>
+      `<option value="${esc(v)}" ${v === selected ? "selected" : ""}>${esc(v)}</option>`))
+    .join("");
+}
+
+function wireHomeFilters() {
+  $$(".filter-select[data-filter]").forEach((sel) => {
+    sel.onchange = () => setHomeQuery({ [sel.dataset.filter]: sel.value });
+  });
+  const soonBtn = $(".toggle-chip[data-filter='soon']");
+  if (soonBtn) soonBtn.onclick = () => setHomeQuery({ soon: soonBtn.getAttribute("aria-pressed") !== "true" });
+  const reset = $(".filters-reset[data-filter='reset']");
+  if (reset) reset.onclick = () => setHomeQuery({ q: "", genre: "", lang: "", cert: "", soon: false });
+}
+
+function distinct(arr) {
+  return [...new Set(arr.filter((v) => v !== null && v !== undefined && v !== ""))].sort();
 }
 
 function genreChip(value, label, active) {
   const isActive = active === value;
-  return `<button type="button" class="chip ${isActive ? "active" : ""}" data-genre="${value}" aria-pressed="${isActive}">${label}</button>`;
+  return `<button type="button" class="chip ${isActive ? "active" : ""}" data-genre="${esc(value)}" aria-pressed="${isActive}">${esc(label)}</button>`;
 }
 
 function movieGrid(movies, comingSoon = false) {
@@ -405,25 +613,48 @@ function movieGrid(movies, comingSoon = false) {
 }
 
 function movieCard(m, comingSoon) {
-  const initials = esc(m.title);
+  const poster = m.posterUrl
+    ? `<img src="${esc(m.posterUrl)}" alt="${esc(m.title)} poster" loading="lazy" onerror="this.remove()" />`
+    : "🎞️";
+  const badge = m.certification ? esc(m.certification) : (comingSoon || m.status === "COMING_SOON" ? "Soon" : "");
   return `
     <a class="movie-card" href="#/movie/${m.id}" aria-label="${esc(m.title)} — view details">
       <div class="poster">
-        <span class="badge">${m.certification ? esc(m.certification) : (comingSoon ? "Soon" : "")}</span>
-        🎞️
+        ${badge ? `<span class="badge">${badge}</span>` : ""}
+        ${poster}
       </div>
       <div class="meta">
-        <h3>${initials}</h3>
-        <p>${esc(m.language || "")} · ${esc(prettyGenre(m.genre))}${m.runtime ? ` · ${m.runtime}m` : ""}</p>
+        <h3>${esc(m.title)}</h3>
+        <p>${esc(m.language || "")}${m.language ? " · " : ""}${esc(prettyGenre(m.genre))}${m.runtime ? ` · ${m.runtime}m` : ""}</p>
       </div>
     </a>`;
 }
 
 function prettyGenre(g) {
-  return ({ ACTION: "Action", COMEDY: "Comedy", ROM_COM: "Rom-Com" }[g]) || g || "";
+  return ({ ACTION: "Action", COMEDY: "Comedy", ROM_COM: "Rom-Com", DRAMA: "Drama", THRILLER: "Thriller", HORROR: "Horror", SCI_FI: "Sci-Fi" }[g]) || g || "";
 }
 
-async function renderMovie(id) {
+const dayKey = (d) => {
+  const dt = new Date(d);
+  return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, "0")}-${String(dt.getDate()).padStart(2, "0")}`;
+};
+
+function dayLabel(key) {
+  const [y, m, d] = key.split("-").map(Number);
+  const dt = new Date(y, m - 1, d);
+  const todayKey = dayKey(new Date());
+  const tomorrow = new Date(); tomorrow.setDate(tomorrow.getDate() + 1);
+  let lead;
+  if (key === todayKey) lead = "Today";
+  else if (key === dayKey(tomorrow)) lead = "Tomorrow";
+  else lead = dt.toLocaleDateString(undefined, { weekday: "short" });
+  const sub = dt.toLocaleDateString(undefined, { day: "numeric", month: "short" });
+  return { lead, sub };
+}
+
+const fmtTime = (d) => new Date(d).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
+
+async function renderMovie(id, query) {
   skeletonMovie();
   const [movie, shows] = await Promise.all([
     api(`/catalog/movies/${id}`),
@@ -438,9 +669,16 @@ async function renderMovie(id) {
 
   future.forEach(cacheShow);
 
-  view().innerHTML = `
+  // Group future shows by local day, then theatre.
+  const byDay = {};
+  future.forEach((s) => { (byDay[dayKey(s.startTime)] = byDay[dayKey(s.startTime)] || []).push(s); });
+  const days = Object.keys(byDay).sort();
+  const requested = (query && query.get("date")) || "";
+  const selectedDay = days.includes(requested) ? requested : days[0];
+
+  const hero = `
     <div class="detail-hero">
-      <div class="poster">🎞️</div>
+      <div class="poster">${movie.posterUrl ? `<img src="${esc(movie.posterUrl)}" alt="${esc(movie.title)} poster" onerror="this.remove()" />` : "🎞️"}</div>
       <div class="info">
         <h1>${esc(movie.title)}</h1>
         <div class="tags">
@@ -453,25 +691,62 @@ async function renderMovie(id) {
         <p class="synopsis">${esc(movie.synopsis || "")}</p>
         ${movie.cast && movie.cast.length ? `<p class="synopsis"><b>Cast:</b> ${esc(movie.cast.join(", "))}</p>` : ""}
       </div>
-    </div>
+    </div>`;
+
+  if (!future.length) {
+    view().innerHTML = `${hero}
+      <h2 class="section-title">Showtimes ${cityName ? `in ${esc(cityName)}` : ""}</h2>
+      <div class="empty">No upcoming shows for this movie.</div>`;
+    return;
+  }
+
+  view().innerHTML = `${hero}
     <h2 class="section-title">Showtimes ${cityName ? `in ${esc(cityName)}` : ""}</h2>
-    ${
-      future.length
-        ? `<div class="show-list">${future.map(showRow).join("")}</div>`
-        : `<div class="empty">No upcoming shows for this movie.</div>`
-    }
-  `;
+    <div class="day-tabs" role="tablist">
+      ${days.map((k) => dayTab(k, k === selectedDay)).join("")}
+      <label class="day-tab date-input-wrap" title="Pick a date">
+        📅 <input type="date" id="datePicker" value="${selectedDay}" min="${days[0]}" max="${days[days.length - 1]}" aria-label="Pick a date" />
+      </label>
+    </div>
+    <div id="showGroups">${theatreGroups(byDay[selectedDay] || [])}</div>`;
+
+  $$(".day-tab[data-day]").forEach((tab) => {
+    tab.onclick = () => selectMovieDay(id, tab.dataset.day);
+  });
+  const picker = $("#datePicker");
+  if (picker) picker.onchange = () => {
+    if (byDay[picker.value]) selectMovieDay(id, picker.value);
+    else toast("No shows on that date", "info");
+  };
 }
 
-function showRow(s) {
-  return `
-    <div class="show-row">
-      <div>
-        <div class="when">${fmtDateTime(s.startTime)}</div>
-        <div class="where">${esc(s.theatreName)} · ${esc(s.screenName)}</div>
-      </div>
-      <button class="btn btn-primary btn-sm" data-show="${s.id}">Select seats</button>
-    </div>`;
+function selectMovieDay(movieId, day) {
+  replaceQuery({ date: day });
+  renderMovie(movieId, parseHash().query);
+}
+
+function dayTab(key, active) {
+  const { lead, sub } = dayLabel(key);
+  return `<button class="day-tab ${active ? "active" : ""}" data-day="${key}" role="tab" aria-selected="${active}">${esc(lead)}<small>${esc(sub)}</small></button>`;
+}
+
+function theatreGroups(shows) {
+  if (!shows.length) return `<div class="empty">No shows on this day.</div>`;
+  const byTheatre = {};
+  shows.forEach((s) => { (byTheatre[s.theatreId] = byTheatre[s.theatreId] || []).push(s); });
+  return Object.values(byTheatre).map((group) => {
+    const t = group[0];
+    const times = group
+      .sort((a, b) => new Date(a.startTime) - new Date(b.startTime))
+      .map((s) => `<button class="showtime-btn" data-show="${s.id}" aria-label="Book ${esc(t.theatreName)} at ${esc(fmtTime(s.startTime))}">${esc(fmtTime(s.startTime))}<small>${esc(s.screenName)}</small></button>`)
+      .join("");
+    return `
+      <div class="theatre-group">
+        <h3>${esc(t.theatreName)}</h3>
+        <div class="theatre-sub">${group.length} show${group.length === 1 ? "" : "s"}</div>
+        <div class="showtime-list">${times}</div>
+      </div>`;
+  }).join("");
 }
 
 async function renderShow(id) {
@@ -730,37 +1005,184 @@ async function renderCheckout(bookingId) {
 async function renderTicket(bookingId) {
   if (!isLoggedIn()) { await requireLogin(); }
   loading();
-  // Ensure ticket is issued, then fetch it.
+  // Ensure ticket is issued, then fetch it (plus the booking for show time/seats).
   let ticket;
   try {
     ticket = await api(`/bookings/${bookingId}/ticket`, { auth: true });
   } catch {
     ticket = await api(`/bookings/${bookingId}/issue-ticket`, { method: "POST", auth: true });
   }
+  const booking = await api(`/bookings/${bookingId}`, { auth: true }).catch(() => null);
   setCrumbs([{ label: "Home", route: "home" }, { label: "Ticket" }]);
 
+  const seatLabels = booking && booking.seats ? booking.seats.map((s) => s.seatNumber).join(", ") : "";
+  const startTime = booking && booking.show ? booking.show.startTime : null;
   const qrSrc = `https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(ticket.qrPayload || ticket.bookingReference || bookingId)}`;
   view().innerHTML = `
-    <div class="ticket">
+    <div class="ticket" id="ticketCard">
       <h2 style="margin:0 0 6px">${esc(ticket.movieName || "Your ticket")}</h2>
       <div class="section-sub" style="margin:0">${esc(ticket.theatreName || "")}</div>
-      <div class="qr"><img src="${qrSrc}" alt="QR" /></div>
+      <div class="qr"><img src="${qrSrc}" alt="Booking QR code" crossorigin="anonymous" /></div>
       <div class="ref">${esc(ticket.bookingReference || `BMS-${bookingId}`)}</div>
       <div class="kv" style="margin-top:18px"><span class="k">Status</span><span class="pill ${ticket.status}">${ticket.status}</span></div>
-      <div class="kv"><span class="k">Seats</span><span>${ticket.seatCount ?? "—"}</span></div>
+      ${startTime ? `<div class="kv"><span class="k">Showtime</span><span>${esc(fmtDateTime(startTime))}</span></div>` : ""}
+      <div class="kv"><span class="k">Seats</span><span>${esc(seatLabels) || (ticket.seatCount ?? "—")}</span></div>
       <div class="kv"><span class="k">Issued</span><span>${ticket.issuedAt ? fmtDateTime(ticket.issuedAt) : "—"}</span></div>
     </div>
-    <div style="text-align:center;margin-top:22px">
-      <button class="btn" data-link="bookings">View my bookings</button>
+    <div class="ticket-actions">
+      <button class="btn" id="printTicketBtn">🖨️ Print / Save PDF</button>
+      <button class="btn" id="calendarBtn">📅 Add to calendar</button>
+      <button class="btn" id="shareTicketBtn">🔗 Share</button>
+      <button class="btn btn-ghost" data-link="bookings">My bookings</button>
     </div>
   `;
+
+  $("#printTicketBtn").onclick = () => window.print();
+  $("#calendarBtn").onclick = () => downloadIcs(ticket, booking, bookingId);
+  $("#shareTicketBtn").onclick = () => shareTicket(ticket, bookingId);
 }
 
-async function renderMyBookings() {
+// ---------------------------------------------------------------------------
+// Ticket extras — calendar (.ics) export and share.
+// ---------------------------------------------------------------------------
+function icsDate(d) {
+  // UTC basic format: YYYYMMDDTHHMMSSZ
+  return new Date(d).toISOString().replace(/[-:]/g, "").replace(/\.\d{3}/, "");
+}
+
+function downloadIcs(ticket, booking, bookingId) {
+  const start = booking && booking.show ? booking.show.startTime : null;
+  if (!start) { toast("No showtime available for this booking", "info"); return; }
+  const runtime = booking.movie && booking.movie.runtime ? booking.movie.runtime : 150;
+  const end = new Date(new Date(start).getTime() + runtime * 60_000);
+  const title = ticket.movieName || (booking.movie && booking.movie.title) || "Movie";
+  const location = [ticket.theatreName, booking.show && booking.show.screenName].filter(Boolean).join(", ");
+  const seats = booking.seats ? booking.seats.map((s) => s.seatNumber).join(", ") : "";
+  const ref = ticket.bookingReference || `BMS-${bookingId}`;
+  const lines = [
+    "BEGIN:VCALENDAR",
+    "VERSION:2.0",
+    "PRODID:-//BookMyShow//Ticket//EN",
+    "BEGIN:VEVENT",
+    `UID:${ref}@bookmyshow`,
+    `DTSTAMP:${icsDate(new Date())}`,
+    `DTSTART:${icsDate(start)}`,
+    `DTEND:${icsDate(end)}`,
+    `SUMMARY:${icsEscape("🎬 " + title)}`,
+    `LOCATION:${icsEscape(location)}`,
+    `DESCRIPTION:${icsEscape(`Booking ${ref}${seats ? " · Seats: " + seats : ""}`)}`,
+    "END:VEVENT",
+    "END:VCALENDAR",
+  ];
+  downloadBlob(lines.join("\r\n"), `${ref}.ics`, "text/calendar");
+  toast("Calendar event downloaded", "success");
+}
+
+function icsEscape(s) {
+  return String(s || "").replace(/[\\;,]/g, (c) => "\\" + c).replace(/\n/g, "\\n");
+}
+
+function downloadBlob(content, filename, type) {
+  const blob = new Blob([content], { type });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+async function shareTicket(ticket, bookingId) {
+  const ref = ticket.bookingReference || `BMS-${bookingId}`;
+  const url = `${location.origin}${location.pathname}#/ticket/${bookingId}`;
+  const shareData = {
+    title: "My BookMyShow ticket",
+    text: `🎬 ${ticket.movieName || "Movie"} — booking ${ref}`,
+    url,
+  };
+  try {
+    if (navigator.share) {
+      await navigator.share(shareData);
+      return;
+    }
+  } catch (e) {
+    if (e && e.name === "AbortError") return; // user cancelled the share sheet
+  }
+  try {
+    await navigator.clipboard.writeText(`${shareData.text}\n${url}`);
+    toast("Ticket link copied to clipboard", "success");
+  } catch {
+    toast("Sharing isn't supported on this device", "info");
+  }
+}
+
+// upcoming = future show (or no show) and not cancelled; past = show already
+// started; cancelled = explicitly cancelled.
+function classifyBooking(b) {
+  if (b.status === "CANCELLED") return "cancelled";
+  const start = b.show && b.show.startTime ? new Date(b.show.startTime).getTime() : null;
+  if (start && start < Date.now()) return "past";
+  return "upcoming";
+}
+
+const BOOKING_FILTERS = [
+  { id: "all", label: "All" },
+  { id: "upcoming", label: "Upcoming" },
+  { id: "past", label: "Past" },
+  { id: "cancelled", label: "Cancelled" },
+];
+
+function bookingFilterBar(active, route) {
+  return `<div class="filters">${BOOKING_FILTERS
+    .map((f) => `<button type="button" class="chip ${f.id === active ? "active" : ""}" data-bookfilter="${f.id}" data-bookroute="${route}" aria-pressed="${f.id === active}">${f.label}</button>`)
+    .join("")}</div>`;
+}
+
+function bookingCard(b) {
+  const seats = (b.seats || []).map((s) => s.seatNumber).join(", ");
+  const start = b.show && b.show.startTime ? b.show.startTime : null;
+  let actions = "";
+  if (b.status === "PENDING") {
+    actions = `<button class="btn btn-primary btn-sm" data-link="checkout/${b.id}">Complete payment</button>`;
+  } else if (b.status === "CONFIRMED") {
+    actions = `
+      <button class="btn btn-sm" data-link="ticket/${b.id}">View ticket</button>
+      <button class="btn btn-sm btn-ghost" data-cancel-refund="${b.id}">Cancel &amp; refund</button>`;
+  }
+  return `
+    <div class="booking-card">
+      <div class="row">
+        <div>
+          <h3>${esc(b.movieName || (b.movie && b.movie.title) || "Booking #" + b.id)}</h3>
+          <div class="sub">${esc(b.theatreName || "")}${seats ? " · Seats: " + esc(seats) : ""}</div>
+          ${start ? `<div class="sub">${esc(fmtDateTime(start))}</div>` : ""}
+          <div class="sub">${inr(b.totalAmount)}</div>
+        </div>
+        <div style="text-align:right">
+          <span class="pill ${b.status}">${b.status}</span>
+        </div>
+      </div>
+      ${actions ? `<div class="card-actions">${actions}</div>` : ""}
+    </div>`;
+}
+
+function renderBookingList(bookings, activeFilter, route) {
+  const sorted = [...bookings].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+  const filtered = activeFilter === "all" ? sorted : sorted.filter((b) => classifyBooking(b) === activeFilter);
+  if (!filtered.length) {
+    return `${bookingFilterBar(activeFilter, route)}<div class="empty">No ${activeFilter === "all" ? "" : activeFilter + " "}bookings here yet.</div>`;
+  }
+  return `${bookingFilterBar(activeFilter, route)}${filtered.map(bookingCard).join("")}`;
+}
+
+async function renderMyBookings(_param, query) {
   if (!isLoggedIn()) { const ok = await requireLogin(); if (!ok) return; }
   loading();
   setCrumbs([{ label: "Home", route: "home" }, { label: "My Bookings" }]);
   const bookings = await api(`/users/me/bookings`, { auth: true });
+  const activeFilter = (query && query.get("filter")) || "all";
 
   if (!bookings.length) {
     view().innerHTML = `<h1 class="section-title">My Bookings</h1><div class="empty">No bookings yet. Go book a movie! 🍿</div>`;
@@ -769,33 +1191,134 @@ async function renderMyBookings() {
 
   view().innerHTML = `
     <h1 class="section-title">My Bookings</h1>
-    ${bookings
-      .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
-      .map((b) => {
-        const seats = (b.seats || []).map((s) => s.seatNumber).join(", ");
-        const action =
-          b.status === "PENDING"
-            ? `<button class="btn btn-primary btn-sm" data-link="checkout/${b.id}">Complete payment</button>`
-            : b.status === "CONFIRMED"
-            ? `<button class="btn btn-sm" data-link="ticket/${b.id}">View ticket</button>`
-            : "";
-        return `
-          <div class="booking-card">
-            <div class="row">
-              <div>
-                <h3>${esc(b.movieName || (b.movie && b.movie.title) || "Booking #" + b.id)}</h3>
-                <div class="sub">${esc(b.theatreName || "")}${seats ? " · Seats: " + esc(seats) : ""}</div>
-                <div class="sub">${inr(b.totalAmount)}</div>
-              </div>
-              <div style="text-align:right">
-                <span class="pill ${b.status}">${b.status}</span>
-                <div style="margin-top:10px">${action}</div>
-              </div>
-            </div>
-          </div>`;
-      })
-      .join("")}
-  `;
+    ${renderBookingList(bookings, activeFilter, "bookings")}`;
+}
+
+// ---------------------------------------------------------------------------
+// Cancel & refund — preview the policy outcome, confirm, then process.
+// ---------------------------------------------------------------------------
+async function cancelAndRefund(bookingId) {
+  let preview;
+  try {
+    preview = await api(`/bookings/${bookingId}/refund-preview`, { auth: true });
+  } catch (e) {
+    toast(e.message, "error");
+    return;
+  }
+
+  if (!preview.eligible) {
+    await confirmDialog({
+      title: "Refund not available",
+      body: `<p>${esc(preview.reason || "This booking can't be refunded.")}</p>`,
+      confirmLabel: "OK",
+      cancelLabel: "Close",
+    });
+    return;
+  }
+
+  const hours = preview.hoursUntilShow >= 0 ? `${preview.hoursUntilShow}h before showtime` : "no scheduled show";
+  const body = `
+    <p>Cancelling this booking will process a refund as per our policy.</p>
+    <div class="refund-line"><span>Amount paid</span><span>${inr(preview.paidAmount)}</span></div>
+    <div class="refund-line"><span>Refund policy</span><span>${preview.refundPercentage}% · ${esc(hours)}</span></div>
+    ${preview.policyDescription ? `<div class="refund-line"><span>Policy</span><span>${esc(preview.policyDescription)}</span></div>` : ""}
+    <div class="refund-line total"><span>You'll get back</span><span class="refund-amount">${inr(preview.refundAmount)}</span></div>
+    ${preview.refundAmount <= 0 ? `<div class="refund-note">No refund is due for this cancellation, but the booking will still be cancelled.</div>` : ""}`;
+
+  const ok = await confirmDialog({
+    title: "Cancel & refund?",
+    body,
+    confirmLabel: "Cancel booking",
+    cancelLabel: "Keep booking",
+    danger: true,
+  });
+  if (!ok) return;
+
+  try {
+    const refund = await api(`/bookings/${bookingId}/refund`, {
+      method: "POST",
+      auth: true,
+      body: { reason: "Cancelled by user" },
+    });
+    toast(refund.amount > 0 ? `Refund of ${inr(refund.amount)} initiated` : "Booking cancelled", "success");
+    navigate(`refund/${refund.refundId}`);
+  } catch (e) {
+    toast(e.message, "error");
+  }
+}
+
+async function renderRefund(refundId) {
+  if (!isLoggedIn()) { await requireLogin(); }
+  loading();
+  setCrumbs([{ label: "Home", route: "home" }, { label: "My Bookings", route: "bookings" }, { label: "Refund" }]);
+  const r = await api(`/refunds/${refundId}`, { auth: true });
+
+  const statusCopy = {
+    SUCCESS: "Your refund has been processed successfully.",
+    PENDING: "Your refund is being processed.",
+    SKIPPED: "No refund was due under the cancellation policy, but your booking is cancelled.",
+    FAILED: "The refund could not be completed. Please contact support.",
+  };
+
+  view().innerHTML = `
+    <h1 class="section-title">Refund status</h1>
+    <div class="panel">
+      <div class="kv"><span class="k">Refund</span><span>#${r.refundId}</span></div>
+      <div class="kv"><span class="k">Booking</span><span>#${r.bookingId}</span></div>
+      <div class="kv"><span class="k">Status</span><span class="pill ${r.status}">${r.status}</span></div>
+      <div class="kv"><span class="k">Refund amount</span><span class="refund-amount">${inr(r.amount)}</span></div>
+      <div class="kv"><span class="k">Refund policy</span><span>${r.refundPercentage}%</span></div>
+      ${r.gatewayRefundId ? `<div class="kv"><span class="k">Gateway ref</span><span>${esc(r.gatewayRefundId)}</span></div>` : ""}
+      <div class="kv"><span class="k">Booking status</span><span class="pill ${r.bookingStatus}">${r.bookingStatus}</span></div>
+    </div>
+    <div class="refund-note">${esc(statusCopy[r.status] || "")}</div>
+    <div style="text-align:center;margin-top:22px">
+      <button class="btn" data-link="bookings">Back to my bookings</button>
+    </div>`;
+}
+
+// ---------------------------------------------------------------------------
+// Profile
+// ---------------------------------------------------------------------------
+async function renderProfile(_param, query) {
+  if (!isLoggedIn()) { const ok = await requireLogin(); if (!ok) return; }
+  loading();
+  setCrumbs([{ label: "Home", route: "home" }, { label: "Profile" }]);
+  const [me, bookings] = await Promise.all([
+    api(`/auth/me`, { auth: true }),
+    api(`/users/me/bookings`, { auth: true }).catch(() => []),
+  ]);
+  const activeFilter = (query && query.get("filter")) || "all";
+  const initial = (me.email || "?").charAt(0);
+
+  view().innerHTML = `
+    <div class="profile-hero">
+      <div class="profile-avatar">${esc(initial)}</div>
+      <div class="info">
+        <h1>${esc(me.email ? me.email.split("@")[0] : "My profile")}</h1>
+        <p>${esc(me.email || "")}</p>
+        <span class="role-badge">${esc(me.role || "USER")} · ${bookings.length} booking${bookings.length === 1 ? "" : "s"}</span>
+      </div>
+      <div style="margin-left:auto;display:flex;gap:10px;flex-wrap:wrap">
+        <button class="btn btn-sm btn-ghost" id="logoutEverywhereBtn">Log out everywhere</button>
+      </div>
+    </div>
+    <h2 class="section-title">Booking history</h2>
+    ${bookings.length ? renderBookingList(bookings, activeFilter, "profile") : `<div class="empty">No bookings yet. 🍿</div>`}`;
+
+  $("#logoutEverywhereBtn").onclick = async () => {
+    const ok = await confirmDialog({
+      title: "Log out everywhere?",
+      body: "<p>This will sign you out of this session on this device. You'll need to log in again.</p>",
+      confirmLabel: "Log out",
+      cancelLabel: "Stay signed in",
+      danger: true,
+    });
+    if (!ok) return;
+    clearSession();
+    toast("Logged out of all sessions", "success");
+    navigate("home");
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -822,8 +1345,18 @@ document.addEventListener("click", (e) => {
 
   const genreEl = e.target.closest("[data-genre]");
   if (genreEl) {
-    sessionStorage.setItem("bms_genre", genreEl.dataset.genre);
-    renderHome();
+    setHomeQuery({ genre: genreEl.dataset.genre });
+    return;
+  }
+
+  const cancelRefundEl = e.target.closest("[data-cancel-refund]");
+  if (cancelRefundEl) { cancelAndRefund(Number(cancelRefundEl.dataset.cancelRefund)); return; }
+
+  const bookFilterEl = e.target.closest("[data-bookfilter]");
+  if (bookFilterEl) {
+    const route = bookFilterEl.dataset.bookroute || "bookings";
+    replaceQuery({ filter: bookFilterEl.dataset.bookfilter });
+    routes[route](null, parseHash().query);
     return;
   }
 });
@@ -832,6 +1365,37 @@ document.addEventListener("click", (e) => {
 $("#authModalClose").onclick = closeAuth;
 $("#authModal").addEventListener("click", (e) => { if (e.target.id === "authModal") closeAuth(); });
 document.querySelectorAll(".tab").forEach((t) => (t.onclick = () => switchAuthTab(t.dataset.tab)));
+
+// Confirm dialog wiring
+$("#confirmOk").onclick = () => closeConfirm(true);
+$("#confirmCancel").onclick = () => closeConfirm(false);
+$("#confirmModal").addEventListener("click", (e) => { if (e.target.id === "confirmModal") closeConfirm(false); });
+
+// Topbar search — debounced; updates ?q= on Home (or jumps to Home with the query).
+let searchDebounce;
+const searchInput = $("#searchInput");
+const searchClear = $("#searchClear");
+if (searchInput) {
+  searchInput.addEventListener("input", () => {
+    if (searchClear) searchClear.hidden = !searchInput.value;
+    clearTimeout(searchDebounce);
+    searchDebounce = setTimeout(() => setHomeQuery({ q: searchInput.value.trim() }), 280);
+  });
+}
+if (searchClear) {
+  searchClear.onclick = () => {
+    searchInput.value = "";
+    searchClear.hidden = true;
+    setHomeQuery({ q: "" });
+    searchInput.focus();
+  };
+}
+const searchForm = $("#searchForm");
+if (searchForm) searchForm.addEventListener("submit", (e) => {
+  e.preventDefault();
+  clearTimeout(searchDebounce);
+  setHomeQuery({ q: searchInput.value.trim() });
+});
 
 // Show/hide password toggle.
 document.addEventListener("click", (e) => {
@@ -854,6 +1418,12 @@ $("#fillDemoBtn").onclick = () => {
   clearFieldErrors(form);
   toast("Demo credentials filled");
 };
+
+// Keyboard: Esc closes the confirm dialog when it's open.
+document.addEventListener("keydown", (e) => {
+  const confirm = $("#confirmModal");
+  if (!confirm.hidden && e.key === "Escape") { e.preventDefault(); closeConfirm(false); }
+});
 
 // Keyboard: Esc closes, Tab is trapped inside the modal.
 document.addEventListener("keydown", (e) => {

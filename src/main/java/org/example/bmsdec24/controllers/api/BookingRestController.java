@@ -4,6 +4,7 @@ import org.example.bmsdec24.dtos.BookSeatsRequestDto;
 import org.example.bmsdec24.dtos.BookShowSeatsRequestDto;
 import org.example.bmsdec24.dtos.BookingEventResponseDto;
 import org.example.bmsdec24.dtos.BookingResponseDto;
+import org.example.bmsdec24.dtos.RefundPreviewDto;
 import org.example.bmsdec24.dtos.RefundRequestDto;
 import org.example.bmsdec24.dtos.RefundResponseDto;
 import org.example.bmsdec24.dtos.TicketResponseDto;
@@ -122,6 +123,17 @@ public class BookingRestController {
         bookingAccessService.requireBookingAccess(bookingId, currentUser);
         String reason = requestDto == null ? null : requestDto.getReason();
         return ResponseEntity.ok(refundService.processRefund(bookingId, reason));
+    }
+
+    @GetMapping("/{bookingId}/refund-preview")
+    public ResponseEntity<RefundPreviewDto> previewRefund(@PathVariable int bookingId)
+            throws InvalidRequestException, AccessDeniedException, InvalidRefundException {
+        if (bookingId <= 0) {
+            throw new InvalidRequestException("bookingId must be a positive integer");
+        }
+        AuthenticatedUser currentUser = SecurityUtils.requireCurrentUser();
+        bookingAccessService.requireBookingAccess(bookingId, currentUser);
+        return ResponseEntity.ok(refundService.previewRefund(bookingId));
     }
 
     @GetMapping("/{bookingId}/ticket")

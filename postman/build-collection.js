@@ -1644,6 +1644,21 @@ const refundsFolder = folder('Refunds', 'Cancellation policy engine — POST /ap
       }),
       testStatus(200, 'Status is 200 OK')
     ),
+    item('GET /api/bookings/{{refundShowBookingId}}/refund-preview - 50% preview (no mutation)',
+      req('GET', '/api/bookings/{{refundShowBookingId}}/refund-preview', {
+        description: 'Read-only preview of the refund policy outcome before cancelling. Powers the web UI "Cancel & refund" confirmation.'
+      }),
+      [
+        "pm.test('Status is 200 OK', function () { pm.response.to.have.status(200); });",
+        "const json = pm.response.json();",
+        "pm.test('Eligible for refund', function () { pm.expect(json.eligible).to.be.true; });",
+        "pm.test('50% policy previewed', function () { pm.expect(json.refundPercentage).to.eql(50); });",
+        "pm.test('Refund amount and paid amount present', function () {",
+        "    pm.expect(json.refundAmount).to.be.above(0);",
+        "    pm.expect(json.paidAmount).to.be.above(0);",
+        "});"
+      ]
+    ),
     item('POST /api/bookings/{{refundShowBookingId}}/refund - 50% partial refund',
       req('POST', '/api/bookings/{{refundShowBookingId}}/refund', {
         body: '{\n  "reason": "Schedule conflict"\n}'
@@ -1681,6 +1696,25 @@ const refundsFolder = folder('Refunds', 'Cancellation policy engine — POST /ap
     item('POST /api/bookings/{{refundPendingBookingId}}/refund - PENDING booking (409)',
       req('POST', '/api/bookings/{{refundPendingBookingId}}/refund', { body: '{}' }),
       testStatus(409, 'Status is 409 Conflict')
+    ),
+    item('GET /api/bookings/{{refundPendingBookingId}}/refund-preview - PENDING not eligible (200)',
+      req('GET', '/api/bookings/{{refundPendingBookingId}}/refund-preview'),
+      [
+        "pm.test('Status is 200 OK', function () { pm.response.to.have.status(200); });",
+        "const json = pm.response.json();",
+        "pm.test('Not eligible with reason', function () {",
+        "    pm.expect(json.eligible).to.be.false;",
+        "    pm.expect(json.reason).to.be.a('string').and.not.empty;",
+        "});"
+      ]
+    ),
+    item('GET /api/bookings/0/refund-preview (400)',
+      req('GET', '/api/bookings/0/refund-preview'),
+      testStatus(400, 'Status is 400 Bad Request')
+    ),
+    item('GET /api/bookings/999999/refund-preview (404)',
+      req('GET', '/api/bookings/999999/refund-preview'),
+      testStatus(404, 'Status is 404 Not Found')
     ),
     item('Setup: book show 1 (2h, 0% policy) for no-refund cancel',
       req('POST', '/api/bookings/book-show-seats', {
@@ -1813,6 +1847,10 @@ const securityFolder = folder('Security Edge Cases', 'Protected endpoints must r
   ),
   item('GET /api/payments/1 - missing token (401)',
     req('GET', '/api/payments/1', { auth: 'noauth' }),
+    testStatus(401, 'Status is 401 Unauthorized')
+  ),
+  item('GET /api/bookings/1/refund-preview - missing token (401)',
+    req('GET', '/api/bookings/1/refund-preview', { auth: 'noauth' }),
     testStatus(401, 'Status is 401 Unauthorized')
   )
 ]);

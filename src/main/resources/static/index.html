@@ -10,6 +10,12 @@
 <body>
   <header class="topbar">
     <a class="brand" href="#/home" aria-label="BookMyShow home">🎬 <span>Book<b>My</b>Show</span></a>
+    <form class="topbar-search" id="searchForm" role="search">
+      <span class="search-icon" aria-hidden="true">🔍</span>
+      <input type="search" id="searchInput" name="q" placeholder="Search movies, casts…"
+             autocomplete="off" aria-label="Search movies" />
+      <button type="button" class="search-clear" id="searchClear" aria-label="Clear search" hidden>&times;</button>
+    </form>
     <div class="topbar-right">
       <select id="citySelect" class="city-select" title="Select city"></select>
       <div id="authArea" class="auth-area"></div>
@@ -70,8 +76,20 @@
     </div>
   </div>
 
-  <!-- Toast -->
-  <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+  <!-- Stackable notifications -->
+  <div id="notifications" class="notifications" role="region" aria-label="Notifications" aria-live="polite"></div>
+
+  <!-- Confirmation dialog host (populated on demand) -->
+  <div class="modal-overlay" id="confirmModal" hidden>
+    <div class="modal confirm-modal" role="alertdialog" aria-modal="true" aria-labelledby="confirmTitle" aria-describedby="confirmBody">
+      <h2 id="confirmTitle" class="confirm-title"></h2>
+      <div id="confirmBody" class="confirm-body"></div>
+      <div class="confirm-actions">
+        <button type="button" class="btn btn-ghost" id="confirmCancel">Cancel</button>
+        <button type="button" class="btn btn-primary" id="confirmOk">Confirm</button>
+      </div>
+    </div>
+  </div>
 
   <script src="/app.js"></script>
 </body>
