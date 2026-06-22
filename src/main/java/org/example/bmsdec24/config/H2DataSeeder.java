@@ -33,7 +33,9 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 
 import java.util.ArrayList;
 import java.util.Calendar;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 @Configuration
 @Profile("h2")
@@ -111,16 +113,27 @@ public class H2DataSeeder {
             theatreRepository.save(orion);
             theatreRepository.save(phoenix);
 
+            // Each theatre has a 5-row seat layout (A-E) with mixed seat types:
+            //   Row A = GOLD, B = SILVER, C = PLATINUM, D = GOLD, E = SILVER (8 seats per row).
+            // The first seats keep stable IDs + statuses for the Postman / H2 test suite:
+            //   Orion seats 1-5: A1,A2 GOLD AVAILABLE; B1,B2 SILVER BOOKED; C1 PLATINUM BLOCKED.
+            //   Phoenix seats 6-9: A1,A2 GOLD; B1 SILVER; C1 PLATINUM (all AVAILABLE).
             Seat orionA1 = seatRepository.save(seat("A1", SeatType.GOLD, 250.0, SeatStatus.AVAILABLE, orion));
             Seat orionA2 = seatRepository.save(seat("A2", SeatType.GOLD, 250.0, SeatStatus.AVAILABLE, orion));
-            seatRepository.save(seat("B1", SeatType.SILVER, 180.0, SeatStatus.BOOKED, orion));
-            seatRepository.save(seat("B2", SeatType.SILVER, 180.0, SeatStatus.BOOKED, orion));
-            seatRepository.save(seat("C1", SeatType.PLATINUM, 330.0, SeatStatus.BLOCKED, orion));
+            Seat orionB1 = seatRepository.save(seat("B1", SeatType.SILVER, 180.0, SeatStatus.BOOKED, orion));
+            Seat orionB2 = seatRepository.save(seat("B2", SeatType.SILVER, 180.0, SeatStatus.BOOKED, orion));
+            Seat orionC1 = seatRepository.save(seat("C1", SeatType.PLATINUM, 330.0, SeatStatus.BLOCKED, orion));
 
             Seat phoenixA1 = seatRepository.save(seat("A1", SeatType.GOLD, 300.0, SeatStatus.AVAILABLE, phoenix));
             Seat phoenixA2 = seatRepository.save(seat("A2", SeatType.GOLD, 300.0, SeatStatus.AVAILABLE, phoenix));
-            seatRepository.save(seat("B1", SeatType.SILVER, 220.0, SeatStatus.AVAILABLE, phoenix));
-            seatRepository.save(seat("C1", SeatType.PLATINUM, 380.0, SeatStatus.AVAILABLE, phoenix));
+            Seat phoenixB1 = seatRepository.save(seat("B1", SeatType.SILVER, 220.0, SeatStatus.AVAILABLE, phoenix));
+            Seat phoenixC1 = seatRepository.save(seat("C1", SeatType.PLATINUM, 380.0, SeatStatus.AVAILABLE, phoenix));
+
+            // Complete the 5-row grids (new seats are AVAILABLE). Existing seats above are reused.
+            List<Seat> orionSeats = new ArrayList<>(List.of(orionA1, orionA2, orionB1, orionB2, orionC1));
+            fillSeatGrid(seatRepository, orion, orionSeats, 250.0, 180.0, 330.0, 8);
+            List<Seat> phoenixSeats = new ArrayList<>(List.of(phoenixA1, phoenixA2, phoenixB1, phoenixC1));
+            fillSeatGrid(seatRepository, phoenix, phoenixSeats, 300.0, 220.0, 380.0, 8);
 
             Screen orionAudi1 = screenRepository.save(screen("Audi 1", orion, List.of(Feature.TWO_D, Feature.DOLBY_ATMOS)));
             Screen phoenixAudi1 = screenRepository.save(screen("Audi 1", phoenix, List.of(Feature.IMAX, Feature.DOLBY_VISION)));
@@ -130,6 +143,7 @@ public class H2DataSeeder {
             Show phoenixAfternoon = showRepository.save(show(phoenixAudi1, actionBlast, hoursFromNow(30)));
             Show orionLate = showRepository.save(show(orionAudi1, actionBlast, hoursFromNow(50)));
 
+            // Pinned show seats (IDs 1-8) keep their exact show/seat/status for the test suite.
             seedShowSeats(showSeatRepository, orionMorning, List.of(orionA1, orionA2),
                     List.of(SeatStatus.AVAILABLE, SeatStatus.AVAILABLE));
             seedShowSeats(showSeatRepository, orionEvening, List.of(orionA1, orionA2),
@@ -138,6 +152,12 @@ public class H2DataSeeder {
                     List.of(SeatStatus.AVAILABLE, SeatStatus.AVAILABLE));
             seedShowSeats(showSeatRepository, orionLate, List.of(orionA1, orionA2),
                     List.of(SeatStatus.AVAILABLE, SeatStatus.AVAILABLE));
+
+            // Give every show the full 5-row seat map (remaining seats mirror their theatre status).
+            addRemainingShowSeats(showSeatRepository, orionMorning, orionSeats, List.of(orionA1, orionA2));
+            addRemainingShowSeats(showSeatRepository, orionEvening, orionSeats, List.of(orionA1, orionA2));
+            addRemainingShowSeats(showSeatRepository, phoenixAfternoon, phoenixSeats, List.of(phoenixA1, phoenixA2));
+            addRemainingShowSeats(showSeatRepository, orionLate, orionSeats, List.of(orionA1, orionA2));
 
             User john = user("John Seed", "john.seed@example.com", passwordEncoder.encode("Password@123"), Role.USER);
             User amy = user("Amy Seed", "amy.seed@example.com", passwordEncoder.encode("Password@123"), Role.USER);
@@ -171,6 +191,44 @@ public class H2DataSeeder {
             showSeat.setShow(show);
             showSeat.setSeat(seats.get(i));
             showSeat.setSeatStatus(statuses.get(i));
+            repository.save(showSeat);
+        }
+    }
+
+    // Completes a theatre to a 5-row grid (rows A-E) of mixed seat types, reusing any
+    // seats already present in {@code seats} and appending the newly created ones to it.
+    private static void fillSeatGrid(SeatRepository repository, Theatre theatre, List<Seat> seats,
+                                     double goldPrice, double silverPrice, double platinumPrice, int seatsPerRow) {
+        Set<String> existing = new HashSet<>();
+        for (Seat seat : seats) {
+            existing.add(seat.getSeatNumber());
+        }
+        String[] rows = {"A", "B", "C", "D", "E"};
+        SeatType[] rowTypes = {SeatType.GOLD, SeatType.SILVER, SeatType.PLATINUM, SeatType.GOLD, SeatType.SILVER};
+        double[] rowPrices = {goldPrice, silverPrice, platinumPrice, goldPrice, silverPrice};
+        for (int r = 0; r < rows.length; r++) {
+            for (int n = 1; n <= seatsPerRow; n++) {
+                String number = rows[r] + n;
+                if (existing.contains(number)) {
+                    continue;
+                }
+                seats.add(repository.save(seat(number, rowTypes[r], rowPrices[r], SeatStatus.AVAILABLE, theatre)));
+            }
+        }
+    }
+
+    // Adds show seats for every theatre seat not already seeded for this show, mirroring
+    // each seat's theatre-level status so the seat map shows realistic booked/blocked seats.
+    private static void addRemainingShowSeats(ShowSeatRepository repository, Show show,
+                                              List<Seat> theatreSeats, List<Seat> alreadySeeded) {
+        for (Seat seat : theatreSeats) {
+            if (alreadySeeded.contains(seat)) {
+                continue;
+            }
+            ShowSeat showSeat = new ShowSeat();
+            showSeat.setShow(show);
+            showSeat.setSeat(seat);
+            showSeat.setSeatStatus(seat.getSeatStatus());
             repository.save(showSeat);
         }
     }

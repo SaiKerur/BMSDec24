@@ -83,6 +83,8 @@ public class ShowServiceImpl implements ShowService {
         dto.setSeatId(showSeat.getSeat().getId());
         dto.setSeatNumber(showSeat.getSeat().getSeatNumber());
         dto.setSeatStatus(showSeat.getSeatStatus());
+        dto.setPrice(showSeat.getSeat().getPrice());
+        dto.setSeatType(showSeat.getSeat().getSeatType());
         dto.setUpdatedAtEpochMs(showSeat.getUpdatedAt() == null ? 0 : showSeat.getUpdatedAt().getTime());
         return dto;
     }

@@ -10,6 +10,7 @@ Spring Boot 3.4 REST API for movie ticket booking with JWT authentication, seat 
 - **Booking lifecycle** — block seats (5-minute hold), confirm, cancel, cleanup expired holds
 - **Payments** — choose Stripe or Razorpay per transaction; mock mode for local/Postman testing
 - **Centralized API errors** — consistent `ApiErrorDto` responses
+- **Web UI (SPA)** — vanilla-JS single-page app served from `static/`, see [Frontend (web UI)](#frontend-web-ui)
 
 ## Tech stack
 
@@ -38,7 +39,7 @@ mvn spring-boot:run -Dspring-boot.run.profiles=h2
 
 - App: http://localhost:8087  
 - H2 console: http://localhost:8087/h2-console (JDBC URL `jdbc:h2:mem:bms`)  
-- Demo data is loaded automatically via `H2DataSeeder` (same shape as the MySQL seed for theatres 1–2).
+- Demo data is loaded automatically via `H2DataSeeder` (same shape as the MySQL seed for theatres 1–2). Each theatre has a **5-row seat layout** (rows A–E, 8 seats per row) with mixed seat types — row A/D `GOLD`, B/E `SILVER`, C `PLATINUM` — so every show renders a full seat map.
 
 ### Option B — MySQL
 
@@ -94,6 +95,25 @@ Signup → Login (JWT) → Browse catalog → Book seats (PENDING hold)
 5. **Pay** — `POST /api/payments/initiate` then `POST /api/payments/callback`
 6. **Confirm booking** (if not auto-confirmed via payment) — `POST /api/bookings/{id}/confirm`
 
+## Frontend (web UI)
+
+A dependency-free vanilla-JS SPA lives in `src/main/resources/static/` (`index.html`, `app.js`, `styles.css`) and is served by Spring Boot at the app root (e.g. http://localhost:8087 with the `h2` profile). It talks to the same public + authenticated APIs documented below.
+
+Flow: **Home (Now Showing / Coming Soon)** → **Movie detail + showtimes** → **Seat map** → **Checkout (payment)** → **Ticket (QR)** → **My Bookings**.
+
+Polish included in this UI:
+
+- **Seat-hold countdown** — checkout shows a live `mm:ss` timer driven by the booking's `holdExpiresAt`; on expiry it toasts and redirects home (the 5-minute PENDING hold).
+- **Real seat-page header** — the seat map shows the movie title, theatre, screen, and showtime (carried over from the movie page via cached show meta, persisted in `sessionStorage`).
+- **Per-seat price + live total** — each available seat renders its price and the sticky summary bar keeps a running total as seats are selected.
+- **Skeleton loaders** — card/grid and detail skeletons replace the bare spinner on the home and movie pages.
+- **Friendly error state** — failed loads render a retryable error panel (offline-aware) instead of a raw message.
+- **Auth modal UX** — show/hide password toggle, inline field validation, a submit spinner, and a **Fill demo credentials** button (no prefilled inputs).
+- **Accessibility** — seat buttons expose `aria-pressed`/`aria-label`, the auth modal traps focus and closes on `Esc`, and navigation uses real `<a>`/`<button>` elements.
+- **Mobile seat map** — rows stay aligned inside a horizontal-scroll container instead of wrapping.
+
+> **Note:** to power per-seat pricing, `GET /api/shows/{showId}/availability` now returns `price` and `seatType` on each entry in `seats[]` (in addition to `showSeatId`, `seatId`, `seatNumber`, `seatStatus`, `updatedAtEpochMs`).
+
 ## API reference
 
 ### Public
@@ -106,6 +126,9 @@ Signup → Login (JWT) → Browse catalog → Book seats (PENDING hold)
 | GET | `/api/catalog/theatres/{theatreId}` | Theatre detail + movies |
 | GET | `/api/catalog/movies` | List movies (`?genre=ACTION` optional) |
 | GET | `/api/catalog/theatres/{theatreId}/seats` | Seat layout and status |
+| GET | `/api/shows/movies/{movieId}` | Showtimes for a movie |
+| GET | `/api/shows/theatres/{theatreId}` | Showtimes at a theatre |
+| GET | `/api/shows/{showId}/availability` | Live seat map (`price`, `seatType`, `seatStatus`); `?changedAfterEpochMs=` for delta polls |
 | POST | `/api/users/signup` | Register |
 | POST | `/api/auth/login` | Obtain tokens |
 | POST | `/api/auth/refresh` | Refresh access token |
@@ -140,8 +163,11 @@ Any other non-empty signature is treated as invalid.
 
 After `db/seed_bmsdec24.sql`:
 
-- **Theatre 1** (Orion PVR): movies 1–2; seats 1–2 AVAILABLE, 3–4 BOOKED, 5 BLOCKED  
-- **Theatre 2** (PVR Phoenix): movies 1, 3; seats 6–9 AVAILABLE  
+- **All 12 theatres** have a full 5-row layout (rows A–E × 8 seats = 40 seats each, 480 seats total), and **all 15 shows** expose the complete seat map.  
+- **Seat types per row:** A/D `GOLD`, B/E `SILVER`, C `PLATINUM`.  
+- **Theatre 1** (Orion PVR): pinned seats 1–2 AVAILABLE, 3–4 BOOKED, 5 BLOCKED; remaining rows as seat ids 30–64.  
+- **Theatre 2** (PVR Phoenix): pinned seats 6–9 AVAILABLE; remaining rows as seat ids 65–100.  
+- **Theatres 3–12:** seats `A1,A2` keep ids 10–29; remaining rows are seat ids 101–480.  
 - **Users:** `john.seed@example.com` / `amy.seed@example.com`, password `Password@123`
 
 ## Postman

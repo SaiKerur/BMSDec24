@@ -91,9 +91,32 @@ function clearSession() {
 function isLoggedIn() { return !!state.accessToken; }
 
 // ---------------------------------------------------------------------------
+// Show-meta cache — lets the seat page render a real header (movie / theatre /
+// showtime) without a dedicated GET /api/shows/{id} endpoint. Populated from
+// the movie page and persisted so a refresh on the seat page still has context.
+// ---------------------------------------------------------------------------
+function cacheShow(s) {
+  if (!s || !s.id) return;
+  const meta = {
+    id: s.id,
+    movieId: s.movieId,
+    movieTitle: s.movieTitle,
+    theatreName: s.theatreName,
+    screenName: s.screenName,
+    startTime: s.startTime,
+  };
+  try { sessionStorage.setItem(`bms_show_${s.id}`, JSON.stringify(meta)); } catch {}
+}
+
+function getCachedShow(id) {
+  try { return JSON.parse(sessionStorage.getItem(`bms_show_${id}`) || "null"); } catch { return null; }
+}
+
+// ---------------------------------------------------------------------------
 // Tiny helpers
 // ---------------------------------------------------------------------------
 const $ = (sel) => document.querySelector(sel);
+const $$ = (sel) => Array.from(document.querySelectorAll(sel));
 const view = () => $("#view");
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const inr = (n) => `₹${Number(n || 0).toFixed(0)}`;
@@ -109,16 +132,87 @@ function toast(msg, type = "") {
   toastTimer = setTimeout(() => (el.hidden = true), 3200);
 }
 
-function loading() { view().innerHTML = `<div class="spinner"></div>`; }
+function loading() { view().innerHTML = `<div class="spinner" role="status" aria-label="Loading"></div>`; }
+
+// ---------------------------------------------------------------------------
+// Seat-hold countdown — the backend holds PENDING bookings for ~5 minutes.
+// ---------------------------------------------------------------------------
+let holdTimer = null;
+function clearHoldTimer() {
+  if (holdTimer) { clearInterval(holdTimer); holdTimer = null; }
+}
+
+function startHoldCountdown(expiresAtMs, onExpire) {
+  clearHoldTimer();
+  const el = $("#holdTimer");
+  if (!el || !expiresAtMs) return;
+  const tick = () => {
+    const remaining = expiresAtMs - Date.now();
+    el.textContent = mmss(remaining);
+    el.classList.toggle("urgent", remaining <= 60_000);
+    if (remaining <= 0) {
+      clearHoldTimer();
+      el.textContent = "00:00";
+      if (typeof onExpire === "function") onExpire();
+    }
+  };
+  tick();
+  holdTimer = setInterval(tick, 1000);
+}
+
+const mmss = (ms) => {
+  const total = Math.max(0, Math.floor(ms / 1000));
+  const m = String(Math.floor(total / 60)).padStart(2, "0");
+  const s = String(total % 60).padStart(2, "0");
+  return `${m}:${s}`;
+};
+
+// ---------------------------------------------------------------------------
+// Skeleton loaders (perceived-speed placeholders)
+// ---------------------------------------------------------------------------
+function skeletonCards(count = 10) {
+  const card = `
+    <div class="skel-card">
+      <div class="skel skel-poster"></div>
+      <div class="skel-meta">
+        <div class="skel skel-line lg"></div>
+        <div class="skel skel-line sm"></div>
+      </div>
+    </div>`;
+  return `<div class="movie-grid">${card.repeat(count)}</div>`;
+}
+
+function skeletonHome() {
+  view().innerHTML = `
+    <div class="skel skel-line title"></div>
+    <div class="filters">${`<div class="skel skel-chip"></div>`.repeat(4)}</div>
+    ${skeletonCards(10)}`;
+}
+
+function skeletonMovie() {
+  view().innerHTML = `
+    <div class="detail-hero">
+      <div class="skel skel-hero-poster"></div>
+      <div class="info" style="flex:1">
+        <div class="skel skel-line title"></div>
+        <div class="skel skel-line sm" style="width:60%"></div>
+        <div class="skel skel-line" style="width:90%;margin-top:18px"></div>
+        <div class="skel skel-line" style="width:80%"></div>
+        <div class="skel skel-line" style="width:70%"></div>
+      </div>
+    </div>
+    <div class="skel skel-line title" style="width:200px"></div>
+    <div class="show-list">${`<div class="skel skel-show-row"></div>`.repeat(4)}</div>`;
+}
 
 function setCrumbs(items) {
   const bc = $("#breadcrumbs");
   bc.innerHTML = items
     .map((it, i) => {
-      const sep = i > 0 ? `<span class="sep">/</span>` : "";
+      const sep = i > 0 ? `<span class="sep" aria-hidden="true">/</span>` : "";
       return it.route
-        ? `${sep}<a data-link="${esc(it.route)}">${esc(it.label)}</a>`
-        : `${sep}<span>${esc(it.label)}</span>`;
+        ? `${sep}<a href="#/${esc(it.route)}">${esc(it.label)}</a>`
+        : `${sep}<span aria-current="page">${esc(it.label)}</span>`;
     })
     .join("");
 }
@@ -144,13 +238,26 @@ function parseHash() {
   return { head: head || "", param: rest.join("/") };
 }
 
+function errorState(message) {
+  const offline = !navigator.onLine;
+  view().innerHTML = `
+    <div class="empty error-state" role="alert">
+      <div class="error-icon" aria-hidden="true">⚠️</div>
+      <h2>Something went wrong</h2>
+      <p>${esc(offline ? "You appear to be offline." : (message || "We couldn't load this page."))}</p>
+      <button class="btn btn-primary" data-retry>Retry</button>
+    </div>`;
+}
+
 async function router() {
+  clearHoldTimer();
   const { head, param } = parseHash();
   const handler = routes[head] || renderHome;
   try {
     await handler(param);
   } catch (e) {
-    view().innerHTML = `<div class="empty">⚠️ ${esc(e.message)}</div>`;
+    if (e && e.authFailed) return; // login modal already prompted
+    errorState(e && e.message);
   }
 }
 
@@ -171,17 +278,69 @@ function renderAuthArea() {
   }
 }
 
+let lastFocusedBeforeModal = null;
 function openAuth(tab = "login") {
+  lastFocusedBeforeModal = document.activeElement;
   $("#authModal").hidden = false;
   switchAuthTab(tab);
   $("#authError").textContent = "";
+  clearFieldErrors();
+  // Focus the first input for keyboard users.
+  const firstInput = $(`#${tab}Form input`);
+  if (firstInput) setTimeout(() => firstInput.focus(), 0);
 }
-function closeAuth() { $("#authModal").hidden = true; }
+
+function closeAuth() {
+  $("#authModal").hidden = true;
+  if (authResolver) { authResolver(false); authResolver = null; }
+  if (lastFocusedBeforeModal && typeof lastFocusedBeforeModal.focus === "function") {
+    lastFocusedBeforeModal.focus();
+  }
+}
 
 function switchAuthTab(tab) {
-  document.querySelectorAll(".tab").forEach((t) => t.classList.toggle("active", t.dataset.tab === tab));
+  document.querySelectorAll(".tab").forEach((t) => {
+    const active = t.dataset.tab === tab;
+    t.classList.toggle("active", active);
+    t.setAttribute("aria-selected", active ? "true" : "false");
+  });
   $("#loginForm").hidden = tab !== "login";
   $("#signupForm").hidden = tab !== "signup";
+  $("#authError").textContent = "";
+  clearFieldErrors();
+}
+
+function clearFieldErrors(form) {
+  const scope = form || document;
+  scope.querySelectorAll(".field-error").forEach((el) => (el.textContent = ""));
+  scope.querySelectorAll(".auth-form input.invalid").forEach((el) => el.classList.remove("invalid"));
+}
+
+function setFieldError(form, name, message) {
+  const small = form.querySelector(`.field-error[data-error-for="${name}"]`);
+  const input = form.querySelector(`[name="${name}"]`);
+  if (small) small.textContent = message;
+  if (input) input.classList.add("invalid");
+}
+
+// Returns true when valid; otherwise paints inline errors and focuses the first.
+function validateAuthForm(form, fields) {
+  clearFieldErrors(form);
+  let firstBad = null;
+  for (const f of fields) {
+    const input = form.querySelector(`[name="${f.name}"]`);
+    const value = (input && input.value || "").trim();
+    let msg = "";
+    if (!value) msg = `${f.label} is required`;
+    else if (f.type === "email" && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) msg = "Enter a valid email";
+    else if (f.minLength && value.length < f.minLength) msg = `${f.label} must be at least ${f.minLength} characters`;
+    if (msg) {
+      setFieldError(form, f.name, msg);
+      if (!firstBad) firstBad = input;
+    }
+  }
+  if (firstBad) firstBad.focus();
+  return !firstBad;
 }
 
 // Resolve after successful login, used to resume an interrupted action.
@@ -213,7 +372,7 @@ async function loadCities() {
 // ---------------------------------------------------------------------------
 async function renderHome(filter) {
   setCrumbs([{ label: "Home" }]);
-  loading();
+  skeletonHome();
   const genre = sessionStorage.getItem("bms_genre") || "";
   const cityQ = state.cityId ? `?cityId=${state.cityId}` : "";
   const [nowShowing, comingSoon] = await Promise.all([
@@ -237,7 +396,8 @@ async function renderHome(filter) {
 }
 
 function genreChip(value, label, active) {
-  return `<span class="chip ${active === value ? "active" : ""}" data-genre="${value}">${label}</span>`;
+  const isActive = active === value;
+  return `<button type="button" class="chip ${isActive ? "active" : ""}" data-genre="${value}" aria-pressed="${isActive}">${label}</button>`;
 }
 
 function movieGrid(movies, comingSoon = false) {
@@ -247,7 +407,7 @@ function movieGrid(movies, comingSoon = false) {
 function movieCard(m, comingSoon) {
   const initials = esc(m.title);
   return `
-    <div class="movie-card" data-movie="${m.id}">
+    <a class="movie-card" href="#/movie/${m.id}" aria-label="${esc(m.title)} — view details">
       <div class="poster">
         <span class="badge">${m.certification ? esc(m.certification) : (comingSoon ? "Soon" : "")}</span>
         🎞️
@@ -256,7 +416,7 @@ function movieCard(m, comingSoon) {
         <h3>${initials}</h3>
         <p>${esc(m.language || "")} · ${esc(prettyGenre(m.genre))}${m.runtime ? ` · ${m.runtime}m` : ""}</p>
       </div>
-    </div>`;
+    </a>`;
 }
 
 function prettyGenre(g) {
@@ -264,7 +424,7 @@ function prettyGenre(g) {
 }
 
 async function renderMovie(id) {
-  loading();
+  skeletonMovie();
   const [movie, shows] = await Promise.all([
     api(`/catalog/movies/${id}`),
     api(`/shows/movies/${id}`),
@@ -275,6 +435,8 @@ async function renderMovie(id) {
   const future = shows
     .filter((s) => new Date(s.startTime).getTime() > Date.now() - 60 * 60 * 1000)
     .sort((a, b) => new Date(a.startTime) - new Date(b.startTime));
+
+  future.forEach(cacheShow);
 
   view().innerHTML = `
     <div class="detail-hero">
@@ -319,17 +481,16 @@ async function renderShow(id) {
   state.selectedShow = id;
   state.selectedSeats = [];
 
-  // Fetch show meta for header (best-effort).
-  let header = `Show #${id}`;
-  try {
-    // availability has no movie/theatre names; show row data isn't available here, so keep simple.
-  } catch {}
+  const meta = getCachedShow(id);
+  const crumbs = [{ label: "Home", route: "home" }];
+  if (meta && meta.movieTitle && meta.movieId) crumbs.push({ label: meta.movieTitle, route: `movie/${meta.movieId}` });
+  crumbs.push({ label: "Seat selection" });
+  setCrumbs(crumbs);
 
-  setCrumbs([{ label: "Home", route: "home" }, { label: "Seat selection" }]);
-  drawSeatMap(avail, header);
+  drawSeatMap(avail, meta);
 }
 
-function drawSeatMap(avail, header) {
+function drawSeatMap(avail, meta) {
   const seats = [...avail.seats].sort((a, b) => a.seatNumber.localeCompare(b.seatNumber, undefined, { numeric: true }));
   // Group by row letter.
   const rows = {};
@@ -343,20 +504,37 @@ function drawSeatMap(avail, header) {
     .map((rk) => {
       const cells = rows[rk]
         .map((s) => {
+          const taken = s.seatStatus === "BOOKED" || s.seatStatus === "BLOCKED";
           const cls = s.seatStatus === "BOOKED" ? "booked" : s.seatStatus === "BLOCKED" ? "blocked" : "";
-          const disabled = cls ? "" : `data-seat="${s.showSeatId}"`;
-          return `<button class="seat ${cls}" ${disabled} title="${esc(s.seatNumber)}">${esc(s.seatNumber)}</button>`;
+          const priceAttr = `data-price="${Number(s.price || 0)}"`;
+          const label = taken
+            ? `Seat ${s.seatNumber}, ${s.seatStatus.toLowerCase()}`
+            : `Seat ${s.seatNumber}, ${inr(s.price)}, available`;
+          const attrs = taken
+            ? `disabled aria-disabled="true"`
+            : `data-seat="${s.showSeatId}" ${priceAttr} aria-pressed="false"`;
+          return `<button class="seat ${cls}" ${attrs} title="${esc(s.seatNumber)} · ${esc(inr(s.price))}" aria-label="${esc(label)}">${esc(s.seatNumber)}</button>`;
         })
         .join("");
-      return `<div class="seat-row">${cells}</div>`;
+      return `<div class="seat-row"><span class="row-label" aria-hidden="true">${esc(rk)}</span>${cells}</div>`;
     })
     .join("");
 
+  const header = meta && meta.movieTitle ? esc(meta.movieTitle) : "Choose your seats";
+  const sub = meta && (meta.theatreName || meta.startTime)
+    ? [meta.theatreName ? esc(meta.theatreName) : null, meta.screenName ? esc(meta.screenName) : null, meta.startTime ? esc(fmtDateTime(meta.startTime)) : null]
+        .filter(Boolean)
+        .join(" · ")
+    : `${avail.availableSeats} of ${avail.totalSeats} seats available`;
+
   view().innerHTML = `
-    <h1 class="section-title">Choose your seats</h1>
-    <p class="section-sub">${avail.availableSeats} of ${avail.totalSeats} seats available</p>
+    <h1 class="section-title">${header}</h1>
+    <p class="section-sub">${sub}</p>
+    <p class="section-sub" style="margin-top:-8px">${avail.availableSeats} of ${avail.totalSeats} seats available</p>
     <div class="screen-banner">Screen this way</div>
-    <div class="seat-map">${rowHtml || '<div class="empty">No seats configured for this show.</div>'}</div>
+    <div class="seat-map-scroll">
+      <div class="seat-map" role="group" aria-label="Seat map">${rowHtml || '<div class="empty">No seats configured for this show.</div>'}</div>
+    </div>
     <div class="legend">
       <span><i class="swatch avail"></i> Available</span>
       <span><i class="swatch sel"></i> Selected</span>
@@ -365,8 +543,8 @@ function drawSeatMap(avail, header) {
     </div>
     <div class="summary-bar">
       <div>
-        <div class="label">Selected seats</div>
-        <div class="total" id="seatCount">0</div>
+        <div class="label"><span id="seatCount">0</span> seat(s) selected</div>
+        <div class="total" id="seatTotal">${inr(0)}</div>
       </div>
       <button class="btn btn-primary" id="proceedBtn" disabled>Proceed</button>
     </div>
@@ -375,17 +553,26 @@ function drawSeatMap(avail, header) {
   $("#proceedBtn").onclick = onProceedBooking;
 }
 
+function recomputeSeatSummary() {
+  const total = $$(".seat.selected")
+    .reduce((sum, el) => sum + Number(el.dataset.price || 0), 0);
+  $("#seatCount").textContent = String(state.selectedSeats.length);
+  $("#seatTotal").textContent = inr(total);
+  $("#proceedBtn").disabled = state.selectedSeats.length === 0;
+}
+
 function toggleSeat(showSeatId, btn) {
   const idx = state.selectedSeats.indexOf(showSeatId);
   if (idx >= 0) {
     state.selectedSeats.splice(idx, 1);
     btn.classList.remove("selected");
+    btn.setAttribute("aria-pressed", "false");
   } else {
     state.selectedSeats.push(showSeatId);
     btn.classList.add("selected");
+    btn.setAttribute("aria-pressed", "true");
   }
-  $("#seatCount").textContent = String(state.selectedSeats.length);
-  $("#proceedBtn").disabled = state.selectedSeats.length === 0;
+  recomputeSeatSummary();
 }
 
 async function onProceedBooking() {
@@ -454,8 +641,25 @@ async function renderCheckout(bookingId) {
     ? providers
     : [{ provider: "STRIPE", displayName: "Stripe", configured: true }, { provider: "RAZORPAY", displayName: "Razorpay", configured: true }];
 
+  const expiresAt = booking.holdExpiresAt ? new Date(booking.holdExpiresAt).getTime() : null;
+  const alreadyExpired = expiresAt && expiresAt <= Date.now();
+
+  if (alreadyExpired) {
+    view().innerHTML = `
+      <div class="panel" style="text-align:center">
+        <h1 class="section-title">Seat hold expired ⌛</h1>
+        <p class="section-sub">Your 5-minute hold ran out. Please pick your seats again.</p>
+        <button class="btn btn-primary" data-link="home">Back to movies</button>
+      </div>`;
+    return;
+  }
+
   view().innerHTML = `
     <h1 class="section-title">Checkout</h1>
+    ${expiresAt ? `<div class="hold-banner" role="status" aria-live="polite">
+      <span class="hold-dot" aria-hidden="true"></span>
+      Seats held — complete payment within <b id="holdTimer">--:--</b>
+    </div>` : ""}
     <div class="panel">
       <div class="kv"><span class="k">Movie</span><span>${esc(booking.movieName || (booking.movie && booking.movie.title) || "—")}</span></div>
       <div class="kv"><span class="k">Theatre</span><span>${esc(booking.theatreName || "—")}</span></div>
@@ -488,6 +692,13 @@ async function renderCheckout(bookingId) {
       $("#payBtn").disabled = false;
     };
   });
+
+  if (expiresAt) {
+    startHoldCountdown(expiresAt, () => {
+      toast("Seat hold expired — please select seats again", "error");
+      navigate("home");
+    });
+  }
 
   $("#payBtn").onclick = async () => {
     if (!selectedProvider) return;
@@ -591,14 +802,14 @@ async function renderMyBookings() {
 // Global event delegation
 // ---------------------------------------------------------------------------
 document.addEventListener("click", (e) => {
+  const retryEl = e.target.closest("[data-retry]");
+  if (retryEl) { router(); return; }
+
   const linkEl = e.target.closest("[data-link]");
   if (linkEl) { navigate(linkEl.dataset.link); return; }
 
   const navEl = e.target.closest("[data-nav]");
   if (navEl) { navigate(navEl.dataset.nav); return; }
-
-  const crumb = e.target.closest("#breadcrumbs a[data-link]");
-  if (crumb) { navigate(crumb.dataset.link); return; }
 
   const movieEl = e.target.closest("[data-movie]");
   if (movieEl) { navigate(`movie/${movieEl.dataset.movie}`); return; }
@@ -622,37 +833,119 @@ $("#authModalClose").onclick = closeAuth;
 $("#authModal").addEventListener("click", (e) => { if (e.target.id === "authModal") closeAuth(); });
 document.querySelectorAll(".tab").forEach((t) => (t.onclick = () => switchAuthTab(t.dataset.tab)));
 
+// Show/hide password toggle.
+document.addEventListener("click", (e) => {
+  const toggle = e.target.closest("[data-pw-toggle]");
+  if (!toggle) return;
+  const input = toggle.parentElement.querySelector('input');
+  if (!input) return;
+  const show = input.type === "password";
+  input.type = show ? "text" : "password";
+  toggle.textContent = show ? "Hide" : "Show";
+  toggle.setAttribute("aria-pressed", show ? "true" : "false");
+  toggle.setAttribute("aria-label", show ? "Hide password" : "Show password");
+});
+
+// "Fill demo" — populate seed credentials on demand instead of prefilling.
+$("#fillDemoBtn").onclick = () => {
+  const form = $("#loginForm");
+  form.querySelector('[name="email"]').value = "john.seed@example.com";
+  form.querySelector('[name="password"]').value = "Password@123";
+  clearFieldErrors(form);
+  toast("Demo credentials filled");
+};
+
+// Keyboard: Esc closes, Tab is trapped inside the modal.
+document.addEventListener("keydown", (e) => {
+  const modal = $("#authModal");
+  if (modal.hidden) return;
+  if (e.key === "Escape") { e.preventDefault(); closeAuth(); return; }
+  if (e.key === "Tab") {
+    const focusable = modal.querySelectorAll(
+      'button:not([disabled]), input:not([disabled]), [tabindex]:not([tabindex="-1"])'
+    );
+    const visible = Array.from(focusable).filter((el) => el.offsetParent !== null);
+    if (!visible.length) return;
+    const first = visible[0];
+    const last = visible[visible.length - 1];
+    if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+    else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+  }
+});
+
+// Clear a field's inline error as the user fixes it.
+$("#authModal").addEventListener("input", (e) => {
+  if (!e.target.matches("input")) return;
+  e.target.classList.remove("invalid");
+  const small = e.target.closest(".field")?.querySelector(".field-error");
+  if (small) small.textContent = "";
+});
+
+function setSubmitting(form, on, label) {
+  const btn = form.querySelector('button[type="submit"]');
+  if (!btn) return;
+  if (on) {
+    btn.dataset.label = btn.textContent;
+    btn.disabled = true;
+    btn.innerHTML = `<span class="btn-spinner" aria-hidden="true"></span> ${esc(label || "Please wait…")}`;
+  } else {
+    btn.disabled = false;
+    btn.textContent = btn.dataset.label || label || "Submit";
+  }
+}
+
 $("#loginForm").addEventListener("submit", async (e) => {
   e.preventDefault();
-  const fd = new FormData(e.target);
+  const form = e.target;
   $("#authError").textContent = "";
+  if (!validateAuthForm(form, [
+    { name: "email", label: "Email", type: "email" },
+    { name: "password", label: "Password" },
+  ])) return;
+
+  const fd = new FormData(form);
+  setSubmitting(form, true, "Logging in…");
   try {
     const token = await api("/auth/login", { method: "POST", body: { email: fd.get("email"), password: fd.get("password") } });
     setSession(token);
+    const resolver = authResolver; authResolver = null;
     closeAuth();
     toast(`Welcome, ${token.email.split("@")[0]}!`, "success");
-    if (authResolver) { authResolver(true); authResolver = null; }
+    if (resolver) resolver(true);
     else router();
   } catch (err) {
     $("#authError").textContent = err.message;
+  } finally {
+    setSubmitting(form, false, "Login");
   }
 });
 
 $("#signupForm").addEventListener("submit", async (e) => {
   e.preventDefault();
-  const fd = new FormData(e.target);
+  const form = e.target;
   $("#authError").textContent = "";
+  if (!validateAuthForm(form, [
+    { name: "name", label: "Full name" },
+    { name: "email", label: "Email", type: "email" },
+    { name: "password", label: "Password", minLength: 8 },
+  ])) return;
+
+  const fd = new FormData(form);
+  setSubmitting(form, true, "Creating account…");
   try {
     await api("/users/signup", { method: "POST", body: { name: fd.get("name"), email: fd.get("email"), password: fd.get("password") } });
     // Auto-login after signup.
     const token = await api("/auth/login", { method: "POST", body: { email: fd.get("email"), password: fd.get("password") } });
     setSession(token);
+    const resolver = authResolver; authResolver = null;
     closeAuth();
     toast("Account created!", "success");
-    if (authResolver) { authResolver(true); authResolver = null; }
+    if (resolver) resolver(true);
     else router();
   } catch (err) {
     $("#authError").textContent = err.message;
+  } finally {
+    setSubmitting(form, false, "Sign up");
   }
 });
 
