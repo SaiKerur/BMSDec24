@@ -273,7 +273,7 @@ const catalogFolder = folder('Catalog', 'Public discovery APIs (no JWT required)
   ])
 ]);
 
-const showsFolder = folder('Shows (Real-time)', 'Public show discovery and live seat availability polling (no JWT required). H2 seed: Show 1 Orion Action Blast (showSeats 1-2 AVAILABLE), Show 2 Orion RomCom (showSeat 3 AVAILABLE, 4 BLOCKED), Show 3 Phoenix Action Blast (showSeats 5-6 AVAILABLE).', [
+const showsFolder = folder('Shows (Real-time)', 'Public show discovery and live seat availability polling (no JWT required). Each theatre has a full 5-row seat map (rows A-E, 8 seats each = 40 seats; types A/D GOLD, B/E SILVER, C PLATINUM). H2 seed: Show 1 Orion Action Blast (showSeats 1-2 AVAILABLE), Show 2 Orion RomCom (showSeat 3 AVAILABLE, 4 BLOCKED), Show 3 Phoenix Action Blast (showSeats 5-6 AVAILABLE).', [
   folder('Happy path', 'Browse showtimes and poll seat map.', [
     item('GET /api/shows/theatres/1 - list shows at Orion PVR',
       req('GET', '/api/shows/theatres/1', { auth: 'noauth', description: 'List all showtimes at theatre 1.' }),
@@ -303,7 +303,7 @@ const showsFolder = folder('Shows (Real-time)', 'Public show discovery and live 
       testStatus(200, 'Status is 200')
     ),
     item('GET /api/shows/1/availability - full seat snapshot (stores serverTimeEpochMs)',
-      req('GET', '/api/shows/1/availability', { auth: 'noauth', description: 'Full seat map with AVAILABLE/BLOCKED/BOOKED counts.' }),
+      req('GET', '/api/shows/1/availability', { auth: 'noauth', description: 'Full seat map with AVAILABLE/BLOCKED/BOOKED counts. Each seat includes price + seatType so the UI can show per-seat pricing and a live total.' }),
       testStatus(200, 'Status is 200').concat([
         "const json = pm.response.json();",
         "pm.test('Has seat counts', function () {",
@@ -317,6 +317,11 @@ const showsFolder = folder('Shows (Real-time)', 'Public show discovery and live 
         "    pm.expect(json.seats[0]).to.have.property('showSeatId');",
         "    pm.expect(json.seats[0]).to.have.property('seatStatus');",
         "    pm.expect(json.seats[0]).to.have.property('updatedAtEpochMs');",
+        "});",
+        "pm.test('Seats expose price and seatType for the seat map', function () {",
+        "    pm.expect(json.seats[0]).to.have.property('price');",
+        "    pm.expect(json.seats[0].price).to.be.a('number');",
+        "    pm.expect(json.seats[0]).to.have.property('seatType');",
         "});",
         "pm.collectionVariables.set('lastServerTimeEpochMs', json.serverTimeEpochMs);"
       ])
@@ -1833,6 +1838,7 @@ const collection = {
 **Prerequisites:** MySQL — run \`db/seed_bmsdec24.sql\` after first start. H2 profile — demo data loads automatically.
 
 **Real-time shows (H2 seed):**
+- Each theatre has a full 5-row seat map (rows A-E, 8 seats each = 40 seats; types A/D GOLD, B/E SILVER, C PLATINUM). Pinned show seats below are unchanged.
 - Show 1 @ Orion — Action Blast — showSeats 1-2 AVAILABLE
 - Show 2 @ Orion — RomCom — showSeat 3 AVAILABLE, 4 BLOCKED
 - Show 3 @ Phoenix — Action Blast — showSeats 5-6 AVAILABLE

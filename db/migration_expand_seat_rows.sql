@@ -1,183 +1,34 @@
--- BMSDec24 full seed data (MySQL)
--- Model: City -> Theatre -> Screen -> Show -> ShowSeat (real-time inventory)
---        Theatre -> Seat; User books via theatre seats OR show seats -> Payment
--- Enums stored as readable text (AVAILABLE, PENDING, STRIPE, TWO_D, etc.).
---
--- Prerequisites:
---   1. Schema BMSDec24 exists
---   2. Run migration_add_realtime_tables.sql once if tables are missing
---      (or start the app once with spring.jpa.hibernate.ddl-auto=update)
---
--- Postman / H2 alignment (theatres 1-2):
---   Show 1 @ Orion  — Action Blast  — showSeats 1-2 AVAILABLE
---   Show 2 @ Orion  — RomCom Nights  — showSeat 3 AVAILABLE, 4 BLOCKED
---   Show 3 @ Phoenix — Action Blast  — showSeats 5-6 AVAILABLE
--- Every theatre (1-12) has a full 5-row seat layout (rows A-E, 8 seats each = 40 seats):
---   Row A/D = GOLD, B/E = SILVER, C = PLATINUM. Every show (1-15) exposes the complete seat map.
---   Pinned IDs are unchanged: seats 1-9 (theatres 1-2), show seats 1-6. Theatre extras use seat ids 30-480.
-
-USE BMSDec24;
-
-SET @OLD_SQL_SAFE_UPDATES = @@SQL_SAFE_UPDATES;
-SET SQL_SAFE_UPDATES = 0;
-
-SET FOREIGN_KEY_CHECKS = 0;
-
-TRUNCATE TABLE payments;
-TRUNCATE TABLE refunds;
-TRUNCATE TABLE booking_seats;
-TRUNCATE TABLE bookings;
-TRUNCATE TABLE show_seats;
-TRUNCATE TABLE shows;
-TRUNCATE TABLE screen_features;
-TRUNCATE TABLE screens;
-TRUNCATE TABLE theatre_movies;
-TRUNCATE TABLE seats;
-TRUNCATE TABLE theatres;
-TRUNCATE TABLE movies;
-TRUNCATE TABLE cities;
-TRUNCATE TABLE cancellation_policies;
-TRUNCATE TABLE `user`;
-
-SET FOREIGN_KEY_CHECKS = 1;
-
--- ===========================================================================
--- Cancellation policies (hours before show → refund %)
+﻿-- ===========================================================================
+-- Non-destructive migration: expand seat maps to full 5-row layouts (40/theatre)
+-- Run ONCE against a DB created from the ORIGINAL seed (29 seats / 32 show_seats).
+-- Preserves existing users, bookings and payments. Idempotent on seats via INSERT IGNORE.
+-- Usage: mysql -u root -p BMSDec24 < db/migration_expand_seat_rows.sql
 -- ===========================================================================
 
-INSERT INTO cancellation_policies (id, hours_before_show, refund_percentage, description, created_at, updated_at) VALUES
-  (1, 48, 100, 'Full refund if cancelled 48+ hours before show', NOW(), NOW()),
-  (2, 24,  50, '50% refund if cancelled 24+ hours before show',  NOW(), NOW()),
-  (3, 12,  25, '25% refund if cancelled 12+ hours before show',  NOW(), NOW()),
-  (4,  0,   0, 'No refund within 12 hours of show start',       NOW(), NOW());
+-- 1) Re-label pinned seat ids 10-29 to A1/A2 GOLD (theatres 3-12) so rows B-E align.
+UPDATE seats SET seat_number='A1', seat_type='GOLD', price=280 WHERE id=10;
+UPDATE seats SET seat_number='A2', seat_type='GOLD', price=280 WHERE id=11;
+UPDATE seats SET seat_number='A1', seat_type='GOLD', price=250 WHERE id=12;
+UPDATE seats SET seat_number='A2', seat_type='GOLD', price=250 WHERE id=13;
+UPDATE seats SET seat_number='A1', seat_type='GOLD', price=270 WHERE id=14;
+UPDATE seats SET seat_number='A2', seat_type='GOLD', price=270 WHERE id=15;
+UPDATE seats SET seat_number='A1', seat_type='GOLD', price=240 WHERE id=16;
+UPDATE seats SET seat_number='A2', seat_type='GOLD', price=240 WHERE id=17;
+UPDATE seats SET seat_number='A1', seat_type='GOLD', price=260 WHERE id=18;
+UPDATE seats SET seat_number='A2', seat_type='GOLD', price=260 WHERE id=19;
+UPDATE seats SET seat_number='A1', seat_type='GOLD', price=270 WHERE id=20;
+UPDATE seats SET seat_number='A2', seat_type='GOLD', price=270 WHERE id=21;
+UPDATE seats SET seat_number='A1', seat_type='GOLD', price=255 WHERE id=22;
+UPDATE seats SET seat_number='A2', seat_type='GOLD', price=255 WHERE id=23;
+UPDATE seats SET seat_number='A1', seat_type='GOLD', price=265 WHERE id=24;
+UPDATE seats SET seat_number='A2', seat_type='GOLD', price=265 WHERE id=25;
+UPDATE seats SET seat_number='A1', seat_type='GOLD', price=265 WHERE id=26;
+UPDATE seats SET seat_number='A2', seat_type='GOLD', price=265 WHERE id=27;
+UPDATE seats SET seat_number='A1', seat_type='GOLD', price=275 WHERE id=28;
+UPDATE seats SET seat_number='A2', seat_type='GOLD', price=275 WHERE id=29;
 
--- ===========================================================================
--- Core masters
--- ===========================================================================
-
-INSERT INTO cities (id, name, created_at, updated_at) VALUES
-  (1, 'Bengaluru', NOW(), NOW()),
-  (2, 'Mumbai',    NOW(), NOW()),
-  (3, 'Delhi',     NOW(), NOW()),
-  (4, 'Hyderabad', NOW(), NOW()),
-  (5, 'Chennai',   NOW(), NOW()),
-  (6, 'Kolkata',   NOW(), NOW()),
-  (7, 'Pune',      NOW(), NOW());
-
--- status drives the catalog: NOW_SHOWING appears under "Now Showing", COMING_SOON under "Coming Soon".
--- language/runtime/certification/synopsis are shown on the movie detail page.
-INSERT INTO movies (id, title, genre, language, runtime, certification, synopsis, release_date, status, created_at, updated_at) VALUES
-  (1,  'Action Blast',        'ACTION',  'English', 142, 'UA', 'A rogue agent races against time to stop a global cyber-attack.',        DATE_ADD(CURDATE(), INTERVAL -14 DAY), 'NOW_SHOWING', NOW(), NOW()),
-  (2,  'RomCom Nights',       'ROM_COM', 'Hindi',   118, 'U',  'Two strangers keep meeting on late-night metro rides and fall in love.', DATE_ADD(CURDATE(), INTERVAL  -7 DAY), 'NOW_SHOWING', NOW(), NOW()),
-  (3,  'Laugh Out Loud',      'COMEDY',  'English', 105, 'U',  'A stand-up comic''s disastrous wedding week becomes his best material.',  DATE_ADD(CURDATE(), INTERVAL -21 DAY), 'NOW_SHOWING', NOW(), NOW()),
-  (4,  'Skyfall Revenge',     'ACTION',  'English', 138, 'UA', 'A retired sniper is pulled back for one last mission of vengeance.',     DATE_ADD(CURDATE(), INTERVAL -10 DAY), 'NOW_SHOWING', NOW(), NOW()),
-  (5,  'Midnight Chase',      'ACTION',  'Hindi',   126, 'UA', 'A detective hunts a thief across the city in a single night.',           DATE_ADD(CURDATE(), INTERVAL  -5 DAY), 'NOW_SHOWING', NOW(), NOW()),
-  (6,  'Steel Horizon',       'ACTION',  'English', 150, 'UA', 'A naval crew defends a coastline against an unknown force.',             DATE_ADD(CURDATE(), INTERVAL -18 DAY), 'NOW_SHOWING', NOW(), NOW()),
-  (7,  'Dragon Fury',         'ACTION',  'Tamil',   134, 'UA', 'A martial artist seeks the truth behind his master''s death.',           DATE_ADD(CURDATE(), INTERVAL  -3 DAY), 'NOW_SHOWING', NOW(), NOW()),
-  (8,  'Code Red',            'ACTION',  'English', 121, 'UA', 'A hacker and a cop team up to stop a citywide blackout.',                DATE_ADD(CURDATE(), INTERVAL  -9 DAY), 'NOW_SHOWING', NOW(), NOW()),
-  (9,  'Velocity X',          'ACTION',  'English', 119, 'UA', 'Street racers are recruited for a high-stakes heist.',                   DATE_ADD(CURDATE(), INTERVAL -12 DAY), 'NOW_SHOWING', NOW(), NOW()),
-  (10, 'Love in Paris',       'ROM_COM', 'Hindi',   122, 'U',  'A travel blogger finds unexpected romance in the city of light.',        DATE_ADD(CURDATE(), INTERVAL  -6 DAY), 'NOW_SHOWING', NOW(), NOW()),
-  (11, 'First Date Diaries',  'ROM_COM', 'English', 110, 'U',  'Two app-matched singles relive their awkward first dates.',              DATE_ADD(CURDATE(), INTERVAL  -4 DAY), 'NOW_SHOWING', NOW(), NOW()),
-  (12, 'Hearts & Coffee',     'ROM_COM', 'English', 115, 'U',  'A barista and a regular customer slowly fall for each other.',           DATE_ADD(CURDATE(), INTERVAL  -8 DAY), 'NOW_SHOWING', NOW(), NOW()),
-  (13, 'Monsoon Melody',      'ROM_COM', 'Hindi',   128, 'U',  'Two musicians reconnect during a rainy season in Kochi.',                DATE_ADD(CURDATE(), INTERVAL -15 DAY), 'NOW_SHOWING', NOW(), NOW()),
-  (14, 'Forever Yours',       'ROM_COM', 'English', 117, 'U',  'Childhood friends realise their feelings on the eve of a wedding.',      DATE_ADD(CURDATE(), INTERVAL -11 DAY), 'NOW_SHOWING', NOW(), NOW()),
-  (15, 'Stand-Up Sunday',     'COMEDY',  'English', 102, 'U',  'Five comics compete for one spot on a famous late-night show.',          DATE_ADD(CURDATE(), INTERVAL -20 DAY), 'NOW_SHOWING', NOW(), NOW()),
-  (16, 'Office Chaos',        'COMEDY',  'Hindi',   108, 'U',  'A startup''s launch day spirals into hilarious disaster.',               DATE_ADD(CURDATE(), INTERVAL  -2 DAY), 'NOW_SHOWING', NOW(), NOW()),
-  (17, 'Wedding Crashers 2',  'COMEDY',  'English', 113, 'UA', 'The crashers are back, this time at a billionaire''s gala.',             DATE_ADD(CURDATE(), INTERVAL -16 DAY), 'NOW_SHOWING', NOW(), NOW()),
-  (18, 'Laugh Riot',          'COMEDY',  'English', 100, 'U',  'A small-town troupe takes their chaotic act to the big city.',           DATE_ADD(CURDATE(), INTERVAL -13 DAY), 'NOW_SHOWING', NOW(), NOW()),
-  (19, 'Funny Bones',         'COMEDY',  'Tamil',   104, 'U',  'A doctor moonlights as a comedian to keep his clinic afloat.',           DATE_ADD(CURDATE(), INTERVAL  -1 DAY), 'NOW_SHOWING', NOW(), NOW()),
-  (20, 'Prank Patrol',        'COMEDY',  'Hindi',    96, 'U',  'A group of friends turn their pranks into a viral sensation.',           DATE_ADD(CURDATE(), INTERVAL -17 DAY), 'NOW_SHOWING', NOW(), NOW()),
-  (21, 'Turbo Squad',         'ACTION',  'English', 156, 'UA', 'A rookie pilot joins an elite squad to defend a frontier colony.',       DATE_ADD(CURDATE(), INTERVAL  30 DAY), 'COMING_SOON', NOW(), NOW()),
-  (22, 'Sunset Serenade',     'ROM_COM', 'Hindi',   124, 'U',  'Old love letters resurface during a seaside summer.',                    DATE_ADD(CURDATE(), INTERVAL  45 DAY), 'COMING_SOON', NOW(), NOW()),
-  (23, 'Giggle Factory',      'COMEDY',  'English', 109, 'U',  'A failing toy company bets everything on one outrageous idea.',          DATE_ADD(CURDATE(), INTERVAL  21 DAY), 'COMING_SOON', NOW(), NOW());
-
-INSERT INTO theatres (id, name, address, city_id, created_at, updated_at) VALUES
-  (1,  'Orion PVR',                    'Dr Rajkumar Road, Rajajinagar, Bengaluru', 1, NOW(), NOW()),
-  (2,  'PVR Phoenix',                  'Lower Parel, Mumbai',                      2, NOW(), NOW()),
-  (3,  'PVR Select Citywalk',          'Saket District Centre, Delhi',           3, NOW(), NOW()),
-  (4,  'INOX Nehru Place',             'Nehru Place, South Delhi',                 3, NOW(), NOW()),
-  (5,  'AMC Forum Sujana Mall',        'Kukatpally, Hyderabad',                    4, NOW(), NOW()),
-  (6,  'PVR RK Salai',                 'Royapettah, Chennai',                      5, NOW(), NOW()),
-  (7,  'INOX Quest',                   'Park Street, Kolkata',                     6, NOW(), NOW()),
-  (8,  'Carnival Cinemas E-Square',    'University Road, Pune',                    7, NOW(), NOW()),
-  (9,  'PVR Nexus Koramangala',        'Koramangala, Bengaluru',                   1, NOW(), NOW()),
-  (10, 'INOX R-City Mall',             'Ghatkopar, Mumbai',                        2, NOW(), NOW()),
-  (11, 'Cinepolis Manjeera',           'KPHB, Hyderabad',                          4, NOW(), NOW()),
-  (12, 'Escape Cinemas Express Avenue','Royapettah, Chennai',                      5, NOW(), NOW());
-
-INSERT INTO theatre_movies (theatre_id, movie_id, theatre_name, movie_name) VALUES
-  (1,  1,  'Orion PVR',                     'Action Blast'),
-  (1,  2,  'Orion PVR',                     'RomCom Nights'),
-  (2,  1,  'PVR Phoenix',                   'Action Blast'),
-  (2,  3,  'PVR Phoenix',                   'Laugh Out Loud'),
-  (3,  4,  'PVR Select Citywalk',           'Skyfall Revenge'),
-  (3,  10, 'PVR Select Citywalk',           'Love in Paris'),
-  (3,  15, 'PVR Select Citywalk',           'Stand-Up Sunday'),
-  (4,  5,  'INOX Nehru Place',              'Midnight Chase'),
-  (4,  11, 'INOX Nehru Place',              'First Date Diaries'),
-  (5,  6,  'AMC Forum Sujana Mall',         'Steel Horizon'),
-  (5,  21, 'AMC Forum Sujana Mall',         'Turbo Squad'),
-  (5,  16, 'AMC Forum Sujana Mall',         'Office Chaos'),
-  (6,  7,  'PVR RK Salai',                  'Dragon Fury'),
-  (6,  13, 'PVR RK Salai',                  'Monsoon Melody'),
-  (7,  8,  'INOX Quest',                    'Code Red'),
-  (7,  18, 'INOX Quest',                    'Laugh Riot'),
-  (8,  9,  'Carnival Cinemas E-Square',     'Velocity X'),
-  (8,  14, 'Carnival Cinemas E-Square',     'Forever Yours'),
-  (9,  1,  'PVR Nexus Koramangala',         'Action Blast'),
-  (9,  3,  'PVR Nexus Koramangala',         'Laugh Out Loud'),
-  (9,  22, 'PVR Nexus Koramangala',         'Sunset Serenade'),
-  (10, 4,  'INOX R-City Mall',              'Skyfall Revenge'),
-  (10, 17, 'INOX R-City Mall',              'Wedding Crashers 2'),
-  (11, 12, 'Cinepolis Manjeera',            'Hearts & Coffee'),
-  (11, 19, 'Cinepolis Manjeera',            'Funny Bones'),
-  (11, 23, 'Cinepolis Manjeera',            'Giggle Factory'),
-  (12, 20, 'Escape Cinemas Express Avenue', 'Prank Patrol'),
-  (12, 7,  'Escape Cinemas Express Avenue', 'Dragon Fury'),
-  (12, 2,  'Escape Cinemas Express Avenue', 'RomCom Nights');
-
--- Users (password = BCrypt of 'Password@123')
-INSERT INTO `user` (id, name, email, password, role, created_at, updated_at) VALUES
-  (1, 'John Seed',  'john.seed@example.com',  '$2a$10$nQltTkZ7bZM6JywiSYyZOu1GtwC/AjPJwtiZqiGSRi/DoTmb9NMy2', 'USER',    NOW(), NOW()),
-  (2, 'Amy Seed',   'amy.seed@example.com',   '$2a$10$nQltTkZ7bZM6JywiSYyZOu1GtwC/AjPJwtiZqiGSRi/DoTmb9NMy2', 'USER',    NOW(), NOW()),
-  (3, 'Admin Seed', 'admin.seed@example.com', '$2a$10$nQltTkZ7bZM6JywiSYyZOu1GtwC/AjPJwtiZqiGSRi/DoTmb9NMy2', 'ADMIN',   NOW(), NOW()),
-  (4, 'Partner Seed', 'partner.seed@example.com', '$2a$10$nQltTkZ7bZM6JywiSYyZOu1GtwC/AjPJwtiZqiGSRi/DoTmb9NMy2', 'PARTNER', NOW(), NOW());
-
--- Theatre seats (seat_status: AVAILABLE | BLOCKED | BOOKED)
-INSERT INTO seats (id, seat_number, seat_type, price, seat_status, theatre_id, booked_by_user_id, theatre_name, booked_by_user_name, created_at, updated_at) VALUES
-  (1,  'A1', 'GOLD',     250.0, 'AVAILABLE', 1,  NULL, 'Orion PVR',                     NULL,        NOW(), NOW()),
-  (2,  'A2', 'GOLD',     250.0, 'AVAILABLE', 1,  NULL, 'Orion PVR',                     NULL,        NOW(), NOW()),
-  (3,  'B1', 'SILVER',   180.0, 'BOOKED',    1,  1,    'Orion PVR',                     'John Seed', NOW(), NOW()),
-  (4,  'B2', 'SILVER',   180.0, 'BOOKED',    1,  1,    'Orion PVR',                     'John Seed', NOW(), NOW()),
-  (5,  'C1', 'PLATINUM', 330.0, 'BLOCKED',   1,  2,    'Orion PVR',                     'Amy Seed',  NOW(), NOW()),
-  (6,  'A1', 'GOLD',     300.0, 'AVAILABLE', 2,  NULL, 'PVR Phoenix',                   NULL,        NOW(), NOW()),
-  (7,  'A2', 'GOLD',     300.0, 'AVAILABLE', 2,  NULL, 'PVR Phoenix',                   NULL,        NOW(), NOW()),
-  (8,  'B1', 'SILVER',   220.0, 'AVAILABLE', 2,  NULL, 'PVR Phoenix',                   NULL,        NOW(), NOW()),
-  (9,  'C1', 'PLATINUM', 380.0, 'AVAILABLE', 2,  NULL, 'PVR Phoenix',                   NULL,        NOW(), NOW()),
-  -- Theatres 3-12: A1,A2 (row A, GOLD). Rows B-E are appended below as a separate INSERT.
-  (10, 'A1', 'GOLD', 280.0, 'AVAILABLE', 3,  NULL, 'PVR Select Citywalk',           NULL, NOW(), NOW()),
-  (11, 'A2', 'GOLD', 280.0, 'AVAILABLE', 3,  NULL, 'PVR Select Citywalk',           NULL, NOW(), NOW()),
-  (12, 'A1', 'GOLD', 250.0, 'AVAILABLE', 4,  NULL, 'INOX Nehru Place',              NULL, NOW(), NOW()),
-  (13, 'A2', 'GOLD', 250.0, 'AVAILABLE', 4,  NULL, 'INOX Nehru Place',              NULL, NOW(), NOW()),
-  (14, 'A1', 'GOLD', 270.0, 'AVAILABLE', 5,  NULL, 'AMC Forum Sujana Mall',         NULL, NOW(), NOW()),
-  (15, 'A2', 'GOLD', 270.0, 'AVAILABLE', 5,  NULL, 'AMC Forum Sujana Mall',         NULL, NOW(), NOW()),
-  (16, 'A1', 'GOLD', 240.0, 'AVAILABLE', 6,  NULL, 'PVR RK Salai',                  NULL, NOW(), NOW()),
-  (17, 'A2', 'GOLD', 240.0, 'AVAILABLE', 6,  NULL, 'PVR RK Salai',                  NULL, NOW(), NOW()),
-  (18, 'A1', 'GOLD', 260.0, 'AVAILABLE', 7,  NULL, 'INOX Quest',                    NULL, NOW(), NOW()),
-  (19, 'A2', 'GOLD', 260.0, 'AVAILABLE', 7,  NULL, 'INOX Quest',                    NULL, NOW(), NOW()),
-  (20, 'A1', 'GOLD', 270.0, 'AVAILABLE', 8,  NULL, 'Carnival Cinemas E-Square',     NULL, NOW(), NOW()),
-  (21, 'A2', 'GOLD', 270.0, 'AVAILABLE', 8,  NULL, 'Carnival Cinemas E-Square',     NULL, NOW(), NOW()),
-  (22, 'A1', 'GOLD', 255.0, 'AVAILABLE', 9,  NULL, 'PVR Nexus Koramangala',         NULL, NOW(), NOW()),
-  (23, 'A2', 'GOLD', 255.0, 'AVAILABLE', 9,  NULL, 'PVR Nexus Koramangala',         NULL, NOW(), NOW()),
-  (24, 'A1', 'GOLD', 265.0, 'AVAILABLE', 10, NULL, 'INOX R-City Mall',              NULL, NOW(), NOW()),
-  (25, 'A2', 'GOLD', 265.0, 'AVAILABLE', 10, NULL, 'INOX R-City Mall',              NULL, NOW(), NOW()),
-  (26, 'A1', 'GOLD', 265.0, 'AVAILABLE', 11, NULL, 'Cinepolis Manjeera',            NULL, NOW(), NOW()),
-  (27, 'A2', 'GOLD', 265.0, 'AVAILABLE', 11, NULL, 'Cinepolis Manjeera',            NULL, NOW(), NOW()),
-  (28, 'A1', 'GOLD', 275.0, 'AVAILABLE', 12, NULL, 'Escape Cinemas Express Avenue', NULL, NOW(), NOW()),
-  (29, 'A2', 'GOLD', 275.0, 'AVAILABLE', 12, NULL, 'Escape Cinemas Express Avenue', NULL, NOW(), NOW()),
-  -- Full 5-row layouts for the demo theatres (Orion=1, Phoenix=2). Rows: A/D GOLD, B/E SILVER, C PLATINUM.
-  -- These extend the pinned seats above (Orion A1-A2,B1-B2,C1 = ids 1-5; Phoenix A1-A2,B1,C1 = ids 6-9).
-  -- Orion PVR (theatre 1): A3-A8, B3-B8, C2-C8, D1-D8, E1-E8
+-- 2) Add remaining seats for demo theatres 1-2 (ids 30-100).
+INSERT IGNORE INTO seats (id, seat_number, seat_type, price, seat_status, theatre_id, booked_by_user_id, theatre_name, booked_by_user_name, created_at, updated_at) VALUES
   (30, 'A3', 'GOLD',     250.0, 'AVAILABLE', 1, NULL, 'Orion PVR', NULL, NOW(), NOW()),
   (31, 'A4', 'GOLD',     250.0, 'AVAILABLE', 1, NULL, 'Orion PVR', NULL, NOW(), NOW()),
   (32, 'A5', 'GOLD',     250.0, 'AVAILABLE', 1, NULL, 'Orion PVR', NULL, NOW(), NOW()),
@@ -251,9 +102,8 @@ INSERT INTO seats (id, seat_number, seat_type, price, seat_status, theatre_id, b
   (99, 'E7', 'SILVER',   220.0, 'AVAILABLE', 2, NULL, 'PVR Phoenix', NULL, NOW(), NOW()),
   (100,'E8', 'SILVER',   220.0, 'AVAILABLE', 2, NULL, 'PVR Phoenix', NULL, NOW(), NOW());
 
--- Theatres 3-12: full 5-row layout (rows B-E + A3-A8). A1,A2 are seat ids 10-29 above.
--- Row A/D = GOLD, B/E = SILVER, C = PLATINUM (8 seats per row = 40 per theatre).
-INSERT INTO seats (id, seat_number, seat_type, price, seat_status, theatre_id, booked_by_user_id, theatre_name, booked_by_user_name, created_at, updated_at) VALUES
+-- 3) Add remaining seats for theatres 3-12 (ids 101-480).
+INSERT IGNORE INTO seats (id, seat_number, seat_type, price, seat_status, theatre_id, booked_by_user_id, theatre_name, booked_by_user_name, created_at, updated_at) VALUES
   (101, 'A3', 'GOLD', 280, 'AVAILABLE', 3, NULL, 'PVR Select Citywalk', NULL, NOW(), NOW()),
   (102, 'A4', 'GOLD', 280, 'AVAILABLE', 3, NULL, 'PVR Select Citywalk', NULL, NOW(), NOW()),
   (103, 'A5', 'GOLD', 280, 'AVAILABLE', 3, NULL, 'PVR Select Citywalk', NULL, NOW(), NOW()),
@@ -635,111 +485,7 @@ INSERT INTO seats (id, seat_number, seat_type, price, seat_status, theatre_id, b
   (479, 'E7', 'SILVER', 195, 'AVAILABLE', 12, NULL, 'Escape Cinemas Express Avenue', NULL, NOW(), NOW()),
   (480, 'E8', 'SILVER', 195, 'AVAILABLE', 12, NULL, 'Escape Cinemas Express Avenue', NULL, NOW(), NOW());
 
--- ===========================================================================
--- Screens & features (real-time layer)
--- ===========================================================================
-
-INSERT INTO screens (id, name, theatre_id, created_at, updated_at) VALUES
-  (1,  'Audi 1', 1,  NOW(), NOW()),
-  (2,  'Audi 1', 2,  NOW(), NOW()),
-  (3,  'Audi 1', 3,  NOW(), NOW()),
-  (4,  'Audi 2', 4,  NOW(), NOW()),
-  (5,  'Screen 1', 5, NOW(), NOW()),
-  (6,  'Audi 1', 6,  NOW(), NOW()),
-  (7,  'Audi 1', 7,  NOW(), NOW()),
-  (8,  'Audi 1', 8,  NOW(), NOW()),
-  (9,  'Audi 1', 9,  NOW(), NOW()),
-  (10, 'Audi 1', 10, NOW(), NOW()),
-  (11, 'Audi 1', 11, NOW(), NOW()),
-  (12, 'Audi 1', 12, NOW(), NOW());
-
-INSERT INTO screen_features (screen_id, feature) VALUES
-  (1,  'TWO_D'),
-  (1,  'DOLBY_ATMOS'),
-  (2,  'IMAX'),
-  (2,  'DOLBY_VISION'),
-  (3,  'TWO_D'),
-  (3,  'DOLBY_VISION'),
-  (4,  'THREE_D'),
-  (5,  'IMAX'),
-  (5,  'DOLBY_ATMOS'),
-  (6,  'TWO_D'),
-  (7,  'FOUR_D'),
-  (8,  'TWO_D'),
-  (9,  'DOLBY_ATMOS'),
-  (10, 'IMAX'),
-  (11, 'THREE_D'),
-  (12, 'TWO_D');
-
--- ===========================================================================
--- Shows (showtimes)
--- ===========================================================================
-
-INSERT INTO shows (id, screen_id, movie_id, start_time, created_at, updated_at) VALUES
-  -- Postman-aligned (theatres 1-2)
-  (1,  1,  1,  DATE_ADD(NOW(), INTERVAL 2 HOUR),  NOW(), NOW()),
-  (2,  1,  2,  DATE_ADD(NOW(), INTERVAL 8 HOUR),  NOW(), NOW()),
-  (3,  2,  1,  DATE_ADD(NOW(), INTERVAL 30 HOUR), NOW(), NOW()),
-  (4,  2,  3,  DATE_ADD(NOW(), INTERVAL 11 HOUR), NOW(), NOW()),
-  -- Additional showtimes at other theatres
-  (5,  3,  4,  DATE_ADD(NOW(), INTERVAL 3 HOUR),  NOW(), NOW()),
-  (6,  3,  10, DATE_ADD(NOW(), INTERVAL 9 HOUR),  NOW(), NOW()),
-  (7,  4,  5,  DATE_ADD(NOW(), INTERVAL 4 HOUR),  NOW(), NOW()),
-  (8,  5,  6,  DATE_ADD(NOW(), INTERVAL 6 HOUR),  NOW(), NOW()),
-  (9,  6,  7,  DATE_ADD(NOW(), INTERVAL 7 HOUR),  NOW(), NOW()),
-  (10, 7,  8,  DATE_ADD(NOW(), INTERVAL 10 HOUR), NOW(), NOW()),
-  (11, 8,  9,  DATE_ADD(NOW(), INTERVAL 12 HOUR), NOW(), NOW()),
-  (12, 9,  1,  DATE_ADD(NOW(), INTERVAL 13 HOUR), NOW(), NOW()),
-  (13, 10, 4,  DATE_ADD(NOW(), INTERVAL 14 HOUR), NOW(), NOW()),
-  (14, 11, 12, DATE_ADD(NOW(), INTERVAL 15 HOUR), NOW(), NOW()),
-  (15, 12, 2,  DATE_ADD(NOW(), INTERVAL 16 HOUR), NOW(), NOW());
-
--- ===========================================================================
--- Show seats (per-showtime inventory)
--- ===========================================================================
-
-INSERT INTO show_seats (id, show_id, seat_id, seat_status, booked_by_user_id, created_at, updated_at) VALUES
-  -- Show 1: Orion Action Blast — seats A1, A2 both AVAILABLE (Postman showSeats 1-2)
-  (1,  1, 1, 'AVAILABLE', NULL, NOW(), NOW()),
-  (2,  1, 2, 'AVAILABLE', NULL, NOW(), NOW()),
-  -- Show 2: Orion RomCom — A1 AVAILABLE, A2 BLOCKED (Postman showSeats 3-4)
-  (3,  2, 1, 'AVAILABLE', NULL, NOW(), NOW()),
-  (4,  2, 2, 'BLOCKED',   2,    NOW(), NOW()),
-  -- Show 3: Phoenix Action Blast — A1, A2 AVAILABLE (Postman showSeats 5-6)
-  (5,  3, 6, 'AVAILABLE', NULL, NOW(), NOW()),
-  (6,  3, 7, 'AVAILABLE', NULL, NOW(), NOW()),
-  -- Show 4: Phoenix Comedy — all phoenix seats AVAILABLE
-  (7,  4, 6, 'AVAILABLE', NULL, NOW(), NOW()),
-  (8,  4, 7, 'AVAILABLE', NULL, NOW(), NOW()),
-  (9,  4, 8, 'AVAILABLE', NULL, NOW(), NOW()),
-  (10, 4, 9, 'AVAILABLE', NULL, NOW(), NOW()),
-  -- Shows 5-15: first two seats at each theatre, all AVAILABLE
-  (11, 5,  10, 'AVAILABLE', NULL, NOW(), NOW()),
-  (12, 5,  11, 'AVAILABLE', NULL, NOW(), NOW()),
-  (13, 6,  10, 'AVAILABLE', NULL, NOW(), NOW()),
-  (14, 6,  11, 'AVAILABLE', NULL, NOW(), NOW()),
-  (15, 7,  12, 'AVAILABLE', NULL, NOW(), NOW()),
-  (16, 7,  13, 'AVAILABLE', NULL, NOW(), NOW()),
-  (17, 8,  14, 'AVAILABLE', NULL, NOW(), NOW()),
-  (18, 8,  15, 'AVAILABLE', NULL, NOW(), NOW()),
-  (19, 9,  16, 'AVAILABLE', NULL, NOW(), NOW()),
-  (20, 9,  17, 'AVAILABLE', NULL, NOW(), NOW()),
-  (21, 10, 18, 'AVAILABLE', NULL, NOW(), NOW()),
-  (22, 10, 19, 'AVAILABLE', NULL, NOW(), NOW()),
-  (23, 11, 20, 'AVAILABLE', NULL, NOW(), NOW()),
-  (24, 11, 21, 'AVAILABLE', NULL, NOW(), NOW()),
-  (25, 12, 22, 'AVAILABLE', NULL, NOW(), NOW()),
-  (26, 12, 23, 'AVAILABLE', NULL, NOW(), NOW()),
-  (27, 13, 24, 'AVAILABLE', NULL, NOW(), NOW()),
-  (28, 13, 25, 'AVAILABLE', NULL, NOW(), NOW()),
-  (29, 14, 26, 'AVAILABLE', NULL, NOW(), NOW()),
-  (30, 14, 27, 'AVAILABLE', NULL, NOW(), NOW()),
-  (31, 15, 28, 'AVAILABLE', NULL, NOW(), NOW()),
-  (32, 15, 29, 'AVAILABLE', NULL, NOW(), NOW());
-
--- Complete the 5-row seat maps for the demo shows 1-4 (theatres 1 & 2 now have 40 seats each).
--- IDs are auto-assigned (continue after 32). Statuses mirror the theatre seats:
---   Orion B1,B2 (seat 3,4) BOOKED, C1 (seat 5) BLOCKED; everything else AVAILABLE.
+-- 4) Complete show_seats for shows 1-4 (ids auto-assigned).
 INSERT INTO show_seats (show_id, seat_id, seat_status, booked_by_user_id, created_at, updated_at) VALUES
   -- Show 1 @ Orion (Action Blast): remaining seats 3,4,5,30-64
   (1, 3, 'BOOKED', 1, NOW(), NOW()), (1, 4, 'BOOKED', 1, NOW(), NOW()), (1, 5, 'BLOCKED', 2, NOW(), NOW()),
@@ -769,7 +515,7 @@ INSERT INTO show_seats (show_id, seat_id, seat_status, booked_by_user_id, create
   (4, 85, 'AVAILABLE', NULL, NOW(), NOW()), (4, 86, 'AVAILABLE', NULL, NOW(), NOW()), (4, 87, 'AVAILABLE', NULL, NOW(), NOW()), (4, 88, 'AVAILABLE', NULL, NOW(), NOW()), (4, 89, 'AVAILABLE', NULL, NOW(), NOW()), (4, 90, 'AVAILABLE', NULL, NOW(), NOW()), (4, 91, 'AVAILABLE', NULL, NOW(), NOW()), (4, 92, 'AVAILABLE', NULL, NOW(), NOW()),
   (4, 93, 'AVAILABLE', NULL, NOW(), NOW()), (4, 94, 'AVAILABLE', NULL, NOW(), NOW()), (4, 95, 'AVAILABLE', NULL, NOW(), NOW()), (4, 96, 'AVAILABLE', NULL, NOW(), NOW()), (4, 97, 'AVAILABLE', NULL, NOW(), NOW()), (4, 98, 'AVAILABLE', NULL, NOW(), NOW()), (4, 99, 'AVAILABLE', NULL, NOW(), NOW()), (4, 100, 'AVAILABLE', NULL, NOW(), NOW());
 
--- Complete the 5-row seat maps for shows 5-15 (theatre rows B-E + A3-A8). IDs auto-assigned.
+-- 5) Complete show_seats for shows 5-15 (ids auto-assigned).
 INSERT INTO show_seats (show_id, seat_id, seat_status, booked_by_user_id, created_at, updated_at) VALUES
   (5, 101, 'AVAILABLE', NULL, NOW(), NOW()),
   (5, 102, 'AVAILABLE', NULL, NOW(), NOW()),
@@ -1190,34 +936,3 @@ INSERT INTO show_seats (show_id, seat_id, seat_status, booked_by_user_id, create
   (15, 479, 'AVAILABLE', NULL, NOW(), NOW()),
   (15, 480, 'AVAILABLE', NULL, NOW(), NOW());
 
--- ===========================================================================
--- Bookings & payments (theatre-level samples; show_id NULL)
--- ===========================================================================
-
-INSERT INTO bookings (id, user_id, movie_id, theatre_id, show_id, user_name, movie_name, theatre_name, status, total_amount, hold_expires_at, created_at, updated_at) VALUES
-  (1, 1, 1, 1, NULL, 'John Seed', 'Action Blast', 'Orion PVR', 'CONFIRMED', 360.0, NULL,                              NOW(), NOW()),
-  (2, 2, 1, 1, NULL, 'Amy Seed',  'Action Blast', 'Orion PVR', 'PENDING',   330.0, DATE_ADD(NOW(), INTERVAL 5 MINUTE), NOW(), NOW());
-
-INSERT INTO booking_seats (booking_id, seat_id) VALUES
-  (1, 3),
-  (1, 4),
-  (2, 5);
-
-INSERT INTO payments (id, amount, currency, provider, status, gateway_order_id, gateway_payment_reference, failure_reason, booking_id, created_at, updated_at) VALUES
-  (1, 360.0, 'INR', 'STRIPE', 'SUCCESS', 'pi_seed_stripe_0001', 'pay_seed_stripe_0001', NULL, 1, NOW(), NOW());
-
--- ===========================================================================
--- Summary
--- ===========================================================================
-
-SELECT 'Seed complete' AS status,
-       (SELECT COUNT(*) FROM cities)       AS cities,
-       (SELECT COUNT(*) FROM movies)       AS movies,
-       (SELECT COUNT(*) FROM theatres)     AS theatres,
-       (SELECT COUNT(*) FROM seats)        AS seats,
-       (SELECT COUNT(*) FROM screens)      AS screens,
-       (SELECT COUNT(*) FROM shows)        AS shows,
-       (SELECT COUNT(*) FROM show_seats)   AS show_seats,
-       (SELECT COUNT(*) FROM bookings)     AS bookings;
-
-SET SQL_SAFE_UPDATES = @OLD_SQL_SAFE_UPDATES;
