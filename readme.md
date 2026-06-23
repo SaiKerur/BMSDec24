@@ -11,7 +11,7 @@ Spring Boot 3.4 REST API for movie ticket booking with JWT authentication, seat 
 - **Cancellation & refunds** — policy-based refunds with a no-mutation **refund preview** endpoint
 - **Payments** — choose Stripe or Razorpay per transaction; mock mode for local/Postman testing
 - **Centralized API errors** — consistent `ApiErrorDto` responses
-- **Web UI (SPA)** — vanilla-JS single-page app served from `static/` with search/filters, date+theatre showtime grouping, cancel-&-refund flow, profile, printable/shareable tickets, and shareable deep links — see [Frontend (web UI)](#frontend-web-ui)
+- **Web UI (SPA)** — React + Vite app built into `static/` with real-time seats, gateway checkout, PWA offline tickets, i18n, and theming — see [Frontend (web UI)](#frontend-web-ui)
 
 ## Tech stack
 
@@ -19,14 +19,18 @@ Spring Boot 3.4 REST API for movie ticket booking with JWT authentication, seat 
 |--------|------------|
 | Runtime | Java 17 |
 | Framework | Spring Boot 3.4, Spring Data JPA, Spring Security |
+| Frontend | React 19, Vite 6, React Router, i18next, Stripe Elements, Razorpay Checkout |
 | Database | MySQL (default) or H2 in-memory (`h2` profile) |
 | Auth | JWT (jjwt 0.12) |
 | Payments | stripe-java, razorpay-java (mock adapters by default) |
+| Testing | JUnit/MockMvc (backend), Vitest + Playwright (frontend) |
+| CI | GitHub Actions (`.github/workflows/ci.yml`) |
 
 ## Prerequisites
 
 - JDK 17+
 - Maven 3.9+
+- **Node.js 20+** (optional for frontend dev; Maven downloads Node automatically during `mvn package`)
 - **MySQL** (default profile): database `BMSDec24`, user/password as in `application.properties`
 - **Postman** (optional): import `postman/BMSDec24-API.postman_collection.json`
 
@@ -37,6 +41,8 @@ Spring Boot 3.4 REST API for movie ticket booking with JWT authentication, seat 
 ```bash
 mvn spring-boot:run -Dspring-boot.run.profiles=h2
 ```
+
+The Maven build runs `npm install && npm run build` in `frontend/` and copies the production bundle to `src/main/resources/static/` (code-split chunks under `/assets/`).
 
 - App: http://localhost:8087  
 - H2 console: http://localhost:8087/h2-console (JDBC URL `jdbc:h2:mem:bms`)  
@@ -62,8 +68,17 @@ mvn spring-boot:run -Dspring-boot.run.profiles=h2
 ### Tests
 
 ```bash
+# Backend (H2)
 mvn test
+
+# Frontend unit tests (from frontend/)
+cd frontend && npm install && npm test
+
+# E2E booking flow (starts Spring Boot on :8087 in CI)
+cd frontend && npm run test:e2e
 ```
+
+GitHub Actions runs all of the above on push/PR (see `.github/workflows/ci.yml`).
 
 Tests use an in-memory H2 database (`src/test/resources/application.properties`).
 
@@ -76,6 +91,7 @@ Tests use an in-memory H2 database (`src/test/resources/application.properties`)
 | `bms.security.jwt.refresh-token-validity-days` | Refresh token TTL (default 7) |
 | `bms.payment.mock-enabled` | `true` = mock Stripe/Razorpay (default) |
 | `bms.payment.stripe.*` / `bms.payment.razorpay.*` | Live gateway keys |
+| `VITE_SENTRY_DSN` (frontend `.env`) | Optional Sentry DSN for client error tracking |
 
 For real payment keys without committing secrets:
 
@@ -98,9 +114,30 @@ Signup → Login (JWT) → Browse catalog → Book seats (PENDING hold)
 
 ## Frontend (web UI)
 
-A dependency-free vanilla-JS SPA lives in `src/main/resources/static/` (`index.html`, `app.js`, `styles.css`) and is served by Spring Boot at the app root (e.g. http://localhost:8087 with the `h2` profile). It talks to the same public + authenticated APIs documented below.
+Source lives in `frontend/` (React + Vite + TypeScript). Production assets are emitted to `src/main/resources/static/` and served by Spring Boot at the app root (e.g. http://localhost:8087 with the `h2` profile).
 
-Flow: **Home (search / filters / Now Showing / Coming Soon)** → **Movie detail (date tabs + theatre groups)** → **Seat map** → **Checkout (payment)** → **Ticket (QR, print, calendar, share)** → **My Bookings / Profile (cancel & refund)**.
+**Dev server** (proxies `/api` to Spring Boot):
+
+```bash
+# Terminal 1 — backend
+mvn spring-boot:run -Dspring-boot.run.profiles=h2
+
+# Terminal 2 — hot reload
+cd frontend && npm install && npm run dev
+```
+
+Flow: **Home (search / filters / Now Showing / Coming Soon)** → **Movie detail (date tabs + theatre groups)** → **Live seat map (SSE)** → **Checkout (Stripe Elements / Razorpay Checkout)** → **Ticket (QR, print, share, offline cache)** → **My Bookings / Profile**.
+
+### v3 features (platform, scale & production-readiness)
+
+- **React + Vite** — componentized SPA with code-split vendor/i18n/stripe chunks, hash routing (`#/home`, `#/show/1`, …), and Vitest unit tests.
+- **Real payment UI** — checkout uses **Stripe Elements** (with 3DS redirect via `confirmPayment`) or **Razorpay Checkout SDK**; mock mode shows dev card panels that call `/api/payments/callback` with valid mock signatures.
+- **Live seat availability (SSE)** — `GET /api/shows/{showId}/availability/stream` pushes snapshots when seats are held/booked/released; the seat page subscribes via `EventSource` and deselects seats that become unavailable.
+- **PWA + offline** — service worker (Workbox) precaches the app shell; confirmed tickets and QR images are cached for offline access (`localStorage` + runtime cache).
+- **i18n & currency** — English/Hindi via `react-i18next`; locale-aware `formatMoney` / `formatDateTime` with INR/USD selector (replaces hardcoded `₹`).
+- **Design system + theming** — documented tokens in [docs/DESIGN_TOKENS.md](docs/DESIGN_TOKENS.md); light/dark toggle persists in `localStorage`.
+- **Observability & resilience** — optional **Sentry** (`VITE_SENTRY_DSN`); API client retry/backoff on 429/5xx; centralized `setAuthRequiredHandler` + `apiWithAuthRetry` replaces per-action re-auth in booking/checkout.
+- **CI** — GitHub Actions runs `mvn test`, Vitest, and Playwright E2E against the H2 profile.
 
 ### v2 features
 
@@ -144,6 +181,7 @@ Flow: **Home (search / filters / Now Showing / Coming Soon)** → **Movie detail
 | GET | `/api/shows/movies/{movieId}` | Showtimes for a movie |
 | GET | `/api/shows/theatres/{theatreId}` | Showtimes at a theatre |
 | GET | `/api/shows/{showId}/availability` | Live seat map (`price`, `seatType`, `seatStatus`); `?changedAfterEpochMs=` for delta polls |
+| GET | `/api/shows/{showId}/availability/stream` | **SSE** live seat map push (`text/event-stream`; event name `availability`) |
 | POST | `/api/users/signup` | Register |
 | POST | `/api/auth/login` | Obtain tokens |
 | POST | `/api/auth/refresh` | Refresh access token |
@@ -206,18 +244,21 @@ node postman/build-collection.js
 
 ```text
 src/main/java/org/example/bmsdec24/
-  controllers/api/   REST controllers (auth, catalog, bookings, payments, health)
-  services/          Business logic
+  controllers/api/   REST controllers (auth, catalog, bookings, payments, health, SSE)
+  services/          Business logic (+ ShowAvailabilityBroadcaster)
   repos/             Spring Data JPA
   models/            JPA entities
   payments/          Strategy + Adapter gateways
   security/          JWT filter and token service
   config/            Security, payment beans, H2 seeder
+frontend/              React + Vite source (build → static/)
+src/main/resources/static/   Built SPA assets (index.html, assets/, sw.js)
 db/
   seed_bmsdec24.sql              MySQL demo data
   migration_add_denormalized_names.sql
 postman/                         API collection + generator
-docs/                            Class diagram and design notes
+.github/workflows/               CI (Maven + Vitest + Playwright)
+docs/                            Class diagram, design tokens
 ```
 
 ## Design patterns
@@ -228,6 +269,7 @@ docs/                            Class diagram and design notes
 ## Documentation
 
 - [docs/BookMyShow_Class_Diagram.md](docs/BookMyShow_Class_Diagram.md) — Mermaid class diagrams
+- [docs/DESIGN_TOKENS.md](docs/DESIGN_TOKENS.md) — CSS design tokens (light/dark)
 
 ## License
 

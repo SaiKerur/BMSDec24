@@ -340,6 +340,17 @@ const showsFolder = folder('Shows (Real-time)', 'Public show discovery and live 
         "});"
       ])
     ),
+    item('GET /api/shows/1/availability/stream - SSE live seat updates (v3)',
+      req('GET', '/api/shows/1/availability/stream', {
+        auth: 'noauth',
+        description: 'Server-Sent Events stream. First event is a full snapshot; subsequent events push when seats are booked/held/released. Content-Type: text/event-stream. In Postman, use the SSE tab or curl: curl -N http://localhost:8087/api/shows/1/availability/stream'
+      }),
+      testStatus(200, 'Status is 200').concat([
+        "pm.test('Content-Type is text/event-stream', function () {",
+        "    pm.expect(pm.response.headers.get('Content-Type')).to.include('text/event-stream');",
+        "});"
+      ])
+    ),
     item('GET /api/shows/2/availability - show with BLOCKED seat in seed',
       req('GET', '/api/shows/2/availability', { auth: 'noauth' }),
       testStatus(200, 'Status is 200').concat([
@@ -1881,6 +1892,7 @@ const collection = {
 - Show 2 @ Orion — RomCom — showSeat 3 AVAILABLE, 4 BLOCKED
 - Show 3 @ Phoenix — Action Blast — showSeats 5-6 AVAILABLE
 - Poll: \`GET /api/shows/{showId}/availability?changedAfterEpochMs={serverTime}\`
+- **SSE (v3):** \`GET /api/shows/{showId}/availability/stream\` — live push via Server-Sent Events
 
 **Payments (mock — \`bms.payment.mock-enabled=true\`):**
 - Client callback success: \`signature\` starts with \`whsec_\` (Stripe) or \`rzp_sig_\` (Razorpay)
@@ -2004,5 +2016,10 @@ function countFolders(items) {
   return items.reduce((n, f) => n + 1 + (f.item ? countFolders(f.item) : 0), 0);
 }
 
-fs.writeFileSync('BMSDec24-API.postman_collection.json', JSON.stringify(collection, null, 2) + '\n');
+const path = require('path');
+const outDir = path.join(__dirname);
+const rootDir = path.join(__dirname, '..');
+const json = JSON.stringify(collection, null, 2) + '\n';
+fs.writeFileSync(path.join(outDir, 'BMSDec24-API.postman_collection.json'), json);
+fs.writeFileSync(path.join(rootDir, 'BMSDec24-API.postman_collection.json'), json);
 console.log('Generated', countItems(collection.item), 'requests across', countFolders(collection.item), 'folders');

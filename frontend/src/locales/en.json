@@ -1,0 +1,87 @@
+{
+  "brand": "BookMyShow",
+  "nav": {
+    "home": "Home",
+    "bookings": "My Bookings",
+    "profile": "Profile",
+    "login": "Login",
+    "signup": "Sign up",
+    "logout": "Log out"
+  },
+  "home": {
+    "nowShowing": "Now Showing",
+    "comingSoon": "Coming Soon",
+    "searchResults": "Search results for \"{{q}}\"",
+    "noResults": "No movies match your filters.",
+    "clearFilters": "Clear filters",
+    "allGenres": "All"
+  },
+  "movie": {
+    "pickDay": "Pick a day",
+    "noShows": "No showtimes for this day."
+  },
+  "show": {
+    "title": "Choose your seats",
+    "screen": "Screen this way",
+    "available": "{{count}} of {{total}} seats available",
+    "live": "Live updates",
+    "proceed": "Proceed",
+    "booking": "Booking…",
+    "held": "Seats held — complete payment",
+    "seatTaken": "That seat was just taken — pick another"
+  },
+  "checkout": {
+    "title": "Checkout",
+    "hold": "Seats held — complete payment within {{time}}",
+    "expired": "Seat hold expired",
+    "expiredBody": "Your 5-minute hold ran out. Please pick your seats again.",
+    "confirmed": "Booking confirmed",
+    "confirmedBody": "This booking is already paid for.",
+    "pay": "Pay {{amount}}",
+    "processing": "Processing…",
+    "selectProvider": "Select payment method",
+    "success": "Payment successful!"
+  },
+  "ticket": {
+    "title": "Your ticket",
+    "print": "Print / Save PDF",
+    "calendar": "Add to calendar",
+    "share": "Share"
+  },
+  "bookings": {
+    "title": "My Bookings",
+    "cancelRefund": "Cancel & refund",
+    "empty": "No bookings yet."
+  },
+  "profile": {
+    "title": "Profile",
+    "logoutEverywhere": "Log out everywhere",
+    "upcoming": "Upcoming",
+    "past": "Past",
+    "cancelled": "Cancelled"
+  },
+  "auth": {
+    "welcome": "Welcome back",
+    "createAccount": "Create account",
+    "sessionExpired": "Your session expired — please log in again",
+    "fillDemo": "Fill demo credentials"
+  },
+  "common": {
+    "retry": "Retry",
+    "loading": "Loading…",
+    "error": "Something went wrong",
+    "offline": "You appear to be offline",
+    "confirm": "Confirm",
+    "cancel": "Cancel",
+    "themeLight": "Light mode",
+    "themeDark": "Dark mode",
+    "language": "Language",
+    "currency": "Currency"
+  },
+  "payment": {
+    "mockStripe": "Mock card payment (dev)",
+    "mockRazorpay": "Mock Razorpay checkout (dev)",
+    "cardNumber": "Card number",
+    "payNow": "Pay now"
+  }
+}

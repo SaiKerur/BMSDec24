@@ -1,96 +1,18 @@
 <!DOCTYPE html>
 <html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>BookMyShow</title>
-  <link rel="stylesheet" href="/styles.css" />
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎬</text></svg>" />
-</head>
-<body>
-  <header class="topbar">
-    <a class="brand" href="#/home" aria-label="BookMyShow home">🎬 <span>Book<b>My</b>Show</span></a>
-    <form class="topbar-search" id="searchForm" role="search">
-      <span class="search-icon" aria-hidden="true">🔍</span>
-      <input type="search" id="searchInput" name="q" placeholder="Search movies, casts…"
-             autocomplete="off" aria-label="Search movies" />
-      <button type="button" class="search-clear" id="searchClear" aria-label="Clear search" hidden>&times;</button>
-    </form>
-    <div class="topbar-right">
-      <select id="citySelect" class="city-select" title="Select city"></select>
-      <div id="authArea" class="auth-area"></div>
-    </div>
-  </header>
-
-  <nav class="breadcrumbs" id="breadcrumbs" aria-label="Breadcrumb"></nav>
-
-  <main id="view" class="view"></main>
-
-  <!-- Auth modal -->
-  <div class="modal-overlay" id="authModal" hidden>
-    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="authModalTitle">
-      <button class="modal-close" id="authModalClose" aria-label="Close dialog">&times;</button>
-      <div class="tabs" role="tablist">
-        <button class="tab active" data-tab="login" role="tab" aria-selected="true" aria-controls="loginForm">Login</button>
-        <button class="tab" data-tab="signup" role="tab" aria-selected="false" aria-controls="signupForm">Sign up</button>
-      </div>
-
-      <form id="loginForm" class="auth-form" novalidate role="tabpanel">
-        <h2 id="authModalTitle">Welcome back</h2>
-        <div class="field">
-          <input type="email" name="email" placeholder="Email" autocomplete="email" aria-label="Email" required />
-          <small class="field-error" data-error-for="email"></small>
-        </div>
-        <div class="field">
-          <div class="password-wrap">
-            <input type="password" name="password" placeholder="Password" autocomplete="current-password" aria-label="Password" required />
-            <button type="button" class="pw-toggle" data-pw-toggle aria-label="Show password" aria-pressed="false">Show</button>
-          </div>
-          <small class="field-error" data-error-for="password"></small>
-        </div>
-        <button type="submit" class="btn btn-primary btn-block">Login</button>
-        <button type="button" class="btn btn-ghost btn-block" id="fillDemoBtn">Fill demo credentials</button>
-      </form>
-
-      <form id="signupForm" class="auth-form" novalidate hidden role="tabpanel">
-        <h2>Create account</h2>
-        <div class="field">
-          <input type="text" name="name" placeholder="Full name" autocomplete="name" aria-label="Full name" required />
-          <small class="field-error" data-error-for="name"></small>
-        </div>
-        <div class="field">
-          <input type="email" name="email" placeholder="Email" autocomplete="email" aria-label="Email" required />
-          <small class="field-error" data-error-for="email"></small>
-        </div>
-        <div class="field">
-          <div class="password-wrap">
-            <input type="password" name="password" placeholder="Password (min 8 chars)" autocomplete="new-password" aria-label="Password" required />
-            <button type="button" class="pw-toggle" data-pw-toggle aria-label="Show password" aria-pressed="false">Show</button>
-          </div>
-          <small class="field-error" data-error-for="password"></small>
-        </div>
-        <button type="submit" class="btn btn-primary btn-block">Sign up</button>
-      </form>
-
-      <p class="form-error" id="authError" role="alert" aria-live="assertive"></p>
-    </div>
-  </div>
-
-  <!-- Stackable notifications -->
-  <div id="notifications" class="notifications" role="region" aria-label="Notifications" aria-live="polite"></div>
-
-  <!-- Confirmation dialog host (populated on demand) -->
-  <div class="modal-overlay" id="confirmModal" hidden>
-    <div class="modal confirm-modal" role="alertdialog" aria-modal="true" aria-labelledby="confirmTitle" aria-describedby="confirmBody">
-      <h2 id="confirmTitle" class="confirm-title"></h2>
-      <div id="confirmBody" class="confirm-body"></div>
-      <div class="confirm-actions">
-        <button type="button" class="btn btn-ghost" id="confirmCancel">Cancel</button>
-        <button type="button" class="btn btn-primary" id="confirmOk">Confirm</button>
-      </div>
-    </div>
-  </div>
-
-  <script src="/app.js"></script>
-</body>
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#e63946" />
+    <title>BookMyShow</title>
+    <script type="module" crossorigin src="/assets/index-BeXMQpIj.js"></script>
+    <link rel="modulepreload" crossorigin href="/assets/i18n-E38rFoYu.js">
+    <link rel="modulepreload" crossorigin href="/assets/vendor-CIjLPk1v.js">
+    <link rel="modulepreload" crossorigin href="/assets/stripe-g3ZUJAhm.js">
+    <link rel="stylesheet" crossorigin href="/assets/index-CtlDvX2E.css">
+  <link rel="manifest" href="/manifest.webmanifest"><script id="vite-plugin-pwa:register-sw" src="/registerSW.js"></script></head>
+  <body>
+    <div id="root"></div>
+  </body>
 </html>

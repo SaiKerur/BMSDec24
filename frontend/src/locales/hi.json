@@ -1,0 +1,87 @@
+{
+  "brand": "बुकमाईशो",
+  "nav": {
+    "home": "होम",
+    "bookings": "मेरी बुकिंग",
+    "profile": "प्रोफ़ाइल",
+    "login": "लॉग इन",
+    "signup": "साइन अप",
+    "logout": "लॉग आउट"
+  },
+  "home": {
+    "nowShowing": "अभी चल रही है",
+    "comingSoon": "जल्द आ रही है",
+    "searchResults": "\"{{q}}\" के लिए खोज परिणाम",
+    "noResults": "कोई फिल्म इन फ़िल्टर से मेल नहीं खाती।",
+    "clearFilters": "फ़िल्टर हटाएं",
+    "allGenres": "सभी"
+  },
+  "movie": {
+    "pickDay": "दिन चुनें",
+    "noShows": "इस दिन कोई शो नहीं।"
+  },
+  "show": {
+    "title": "अपनी सीट चुनें",
+    "screen": "स्क्रीन इस तरफ",
+    "available": "{{total}} में से {{count}} सीट उपलब्ध",
+    "live": "लाइव अपडेट",
+    "proceed": "आगे बढ़ें",
+    "booking": "बुक हो रही है…",
+    "held": "सीट होल्ड — भुगतान पूरा करें",
+    "seatTaken": "वह सीट अभी बुक हो गई — दूसरी चुनें"
+  },
+  "checkout": {
+    "title": "चेकआउट",
+    "hold": "सीट होल्ड — {{time}} में भुगतान पूरा करें",
+    "expired": "सीट होल्ड समाप्त",
+    "expiredBody": "आपका 5-मिनट होल्ड खत्म हो गया। कृपया फिर से सीट चुनें।",
+    "confirmed": "बुकिंग पुष्ट",
+    "confirmedBody": "यह बुकिंग पहले से भुगतान हो चुकी है।",
+    "pay": "{{amount}} भुगतान करें",
+    "processing": "प्रोसेस हो रहा है…",
+    "selectProvider": "भुगतान विधि चुनें",
+    "success": "भुगतान सफल!"
+  },
+  "ticket": {
+    "title": "आपका टिकट",
+    "print": "प्रिंट / PDF सेव",
+    "calendar": "कैलेंडर में जोड़ें",
+    "share": "शेयर करें"
+  },
+  "bookings": {
+    "title": "मेरी बुकिंग",
+    "cancelRefund": "रद्द और रिफंड",
+    "empty": "अभी कोई बुकिंग नहीं।"
+  },
+  "profile": {
+    "title": "प्रोफ़ाइल",
+    "logoutEverywhere": "हर जगह से लॉग आउट",
+    "upcoming": "आगामी",
+    "past": "पिछली",
+    "cancelled": "रद्द"
+  },
+  "auth": {
+    "welcome": "वापसी पर स्वागत",
+    "createAccount": "खाता बनाएं",
+    "sessionExpired": "सत्र समाप्त — कृपया फिर लॉग इन करें",
+    "fillDemo": "डेमो क्रेडेंशियल भरें"
+  },
+  "common": {
+    "retry": "फिर कोशिश करें",
+    "loading": "लोड हो रहा है…",
+    "error": "कुछ गलत हो गया",
+    "offline": "आप ऑफ़लाइन लग रहे हैं",
+    "confirm": "पुष्टि",
+    "cancel": "रद्द",
+    "themeLight": "लाइट मोड",
+    "themeDark": "डार्क मोड",
+    "language": "भाषा",
+    "currency": "मुद्रा"
+  },
+  "payment": {
+    "mockStripe": "मॉक कार्ड भुगतान (डेव)",
+    "mockRazorpay": "मॉक Razorpay चेकआउट (डेव)",
+    "cardNumber": "कार्ड नंबर",
+    "payNow": "अभी भुगतान करें"
+  }
+}
