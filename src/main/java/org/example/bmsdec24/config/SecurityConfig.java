@@ -35,7 +35,10 @@ public class SecurityConfig {
                 .cors(cors -> {})
                 .sessionManagement(sm -> sm.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers(HttpMethod.GET, "/", "/index.html", "/app.js", "/styles.css", "/favicon.ico").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/", "/index.html", "/app.js", "/styles.css",
+                                "/assets/**", "/manifest.webmanifest", "/sw.js", "/sw.js.map",
+                                "/workbox-*.js", "/workbox-*.js.map",
+                                "/favicon.ico", "/favicon.svg", "/registerSW.js").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/health").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/catalog/**").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/shows/**").permitAll()

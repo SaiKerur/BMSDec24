@@ -1,0 +1,53 @@
+/**
+ * BMS Design Tokens
+ * Semantic CSS custom properties for theming.
+ * Toggle via `data-theme="light"|"dark"` on `<html>`.
+ */
+
+/* Dark theme (default — cinema) */
+:root,
+[data-theme='dark'] {
+  --color-bg: #0f1117;
+  --color-surface: #181b24;
+  --color-surface-2: #21252f;
+  --color-border: #2b303c;
+  --color-text: #eef0f5;
+  --color-muted: #9aa3b2;
+  --color-primary: #e63946;
+  --color-primary-hover: #f04a57;
+  --color-success: #2ecc71;
+  --color-warning: #f1b24a;
+  --shadow-md: 0 8px 30px rgba(0, 0, 0, 0.35);
+  --radius-md: 14px;
+  --topbar-bg: rgba(15, 17, 23, 0.92);
+
+  /* Legacy aliases (v1/v2) */
+  --bg: var(--color-bg);
+  --surface: var(--color-surface);
+  --surface-2: var(--color-surface-2);
+  --border: var(--color-border);
+  --text: var(--color-text);
+  --muted: var(--color-muted);
+  --primary: var(--color-primary);
+  --primary-hover: var(--color-primary-hover);
+  --green: var(--color-success);
+  --amber: var(--color-warning);
+  --shadow: var(--shadow-md);
+  --radius: var(--radius-md);
+}
+
+/* Light theme */
+[data-theme='light'] {
+  --color-bg: #f4f5f7;
+  --color-surface: #ffffff;
+  --color-surface-2: #eef0f4;
+  --color-border: #d8dde6;
+  --color-text: #1a1d24;
+  --color-muted: #5c6578;
+  --color-primary: #d62839;
+  --color-primary-hover: #e63946;
+  --color-success: #1b9e4b;
+  --color-warning: #c9922e;
+  --shadow-md: 0 8px 24px rgba(26, 29, 36, 0.08);
+  --topbar-bg: rgba(244, 245, 247, 0.92);
+}

@@ -44,6 +44,7 @@ public class BookingServiceImpl implements BookingService {
     private final BookingRepository bookingRepository;
     private final TicketService ticketService;
     private final BookingEventService bookingEventService;
+    private final ShowAvailabilityNotifier showAvailabilityNotifier;
 
     public BookingServiceImpl(UserRepository userRepository,
                               MovieRepository movieRepository,
@@ -52,7 +53,8 @@ public class BookingServiceImpl implements BookingService {
                               ShowSeatRepository showSeatRepository,
                               BookingRepository bookingRepository,
                               TicketService ticketService,
-                              BookingEventService bookingEventService) {
+                              BookingEventService bookingEventService,
+                              ShowAvailabilityNotifier showAvailabilityNotifier) {
         this.userRepository = userRepository;
         this.movieRepository = movieRepository;
         this.theatreRepository = theatreRepository;
@@ -61,6 +63,7 @@ public class BookingServiceImpl implements BookingService {
         this.bookingRepository = bookingRepository;
         this.ticketService = ticketService;
         this.bookingEventService = bookingEventService;
+        this.showAvailabilityNotifier = showAvailabilityNotifier;
     }
 
     @Transactional(isolation = Isolation.READ_COMMITTED)
@@ -97,6 +100,10 @@ public class BookingServiceImpl implements BookingService {
         Booking saved = bookingRepository.save(booking);
         bookingEventService.recordEvent(saved, BookingEventType.HELD);
         return bookingRepository.findDetailedById(saved.getId()).orElse(saved);
+    }
+
+    private void notifyShowIfPresent(Show show) {
+        showAvailabilityNotifier.notifyShowChanged(show);
     }
 
     @Transactional(isolation = Isolation.READ_COMMITTED)
@@ -140,6 +147,7 @@ public class BookingServiceImpl implements BookingService {
 
         Booking saved = bookingRepository.save(booking);
         bookingEventService.recordEvent(saved, BookingEventType.HELD);
+        notifyShowIfPresent(show);
         return bookingRepository.findDetailedById(saved.getId()).orElse(saved);
     }
 
@@ -188,6 +196,7 @@ public class BookingServiceImpl implements BookingService {
         Booking saved = bookingRepository.save(booking);
         bookingEventService.recordEvent(saved, BookingEventType.CONFIRMED);
         issueTicketSafely(saved.getId());
+        notifyShowIfPresent(saved.getShow());
         return bookingRepository.findDetailedById(saved.getId()).orElse(saved);
     }
 
@@ -205,6 +214,7 @@ public class BookingServiceImpl implements BookingService {
         Booking saved = bookingRepository.save(booking);
         bookingEventService.recordEvent(saved, BookingEventType.CANCELLED);
         revokeTicketSafely(saved.getId());
+        notifyShowIfPresent(saved.getShow());
         return bookingRepository.findDetailedById(saved.getId()).orElse(saved);
     }
 
@@ -323,6 +333,7 @@ public class BookingServiceImpl implements BookingService {
         booking.setHoldExpiresAt(null);
         Booking saved = bookingRepository.save(booking);
         bookingEventService.recordEvent(saved, BookingEventType.EXPIRED);
+        notifyShowIfPresent(saved.getShow());
     }
 
     private void confirmShowSeats(Booking booking) {
